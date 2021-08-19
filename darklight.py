@@ -17,19 +17,18 @@ G   = 4.30092e-6  # kpc km^2 / MSUN / s^2
 ##################################################
 # DARKLIGHT
 
-def DarkLight(t,z,vmax,halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25):
+def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25):
     """
-    Generates a star formation history for a halo given its (raw) vmax trajectory.
-    The vmax trajectory is smoothed before applying a SFH-vmax relation to reduce
-    temporary jumps in vmax due to mergers.  Returns the timesteps t, z, the 
-    smoothed vmax trajectory, and M*.
+    Generates a star formation history, which is integrated to obtain the M* for
+    a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
+    relation to reduce temporary jumps in vmax due to mergers. Returns the
+    timesteps t, z, the smoothed vmax trajectory, and M*.
     
     timestepping = resolution of SFH, in Gyr
     """
 
-    assert (len(t)==len(z)  and len(z)==len(vmax)), 'All input arrays must be of the same length!'
-    assert (t[0]>t[-1]), 'Expecting time array to decrease (e.g. start at 13.8 Gyr, end near 0 Gyr)'
-
+    t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
+    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ])
     ntimesteps = len(t)
     ire = where(z>=zre)[0][0]
 
