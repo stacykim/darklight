@@ -28,8 +28,8 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
     """
 
     t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ])
     ntimesteps = len(t)
+    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ])
     ire = where(z>=zre)[0][0]
 
     # smooth vmax rotation curve
