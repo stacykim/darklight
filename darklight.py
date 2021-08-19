@@ -1,4 +1,4 @@
-# sem.py
+# darklight.py
 # created 2020.03.20 by stacy kim
 
 from numpy import *
@@ -11,6 +11,83 @@ import scipy.ndimage.filters as filters
 from tangos.examples.mergers import *
 
 G   = 4.30092e-6  # kpc km^2 / MSUN / s^2
+
+
+
+##################################################
+# DARKLIGHT
+
+def DarkLight(t,z,vmax,halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25):
+    """
+    Generates a star formation history for a halo given its (raw) vmax trajectory.
+    The vmax trajectory is smoothed before applying a SFH-vmax relation to reduce
+    temporary jumps in vmax due to mergers.  Returns the timesteps t, z, the 
+    smoothed vmax trajectory, and M*.
+    
+    timestepping = resolution of SFH, in Gyr
+    """
+
+    assert (len(t)==len(z)  and len(z)==len(vmax)), 'All input arrays must be of the same length!'
+    assert (t[0]>t[-1]), 'Expecting time array to decrease (e.g. start at 13.8 Gyr, end near 0 Gyr)'
+
+    ntimesteps = len(t)
+    ire = where(z>=zre)[0][0]
+
+    # smooth vmax rotation curve
+    t500myr = arange(t[-1],t[0],0.5)  # NOTE: interpolated in 500 Myr bins
+    v500myr = interp(t500myr,t[::-1],vmax[::-1])
+    vsmooth500myr = filters.gaussian_filter1d(v500myr,sigma=1)    
+
+    # make sure reionization included in time steps
+    if zre not in z:
+        t = concatenate([ t[:ire], [interp(zre,z,t)], t[ire:] ])
+        z = concatenate([ z[:ire], [zre], z[ire:] ])
+    vsmooth = interp(t, t500myr, vsmooth500myr)
+    dt = t[1:]-t[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
+
+    # generate the star formation histories
+    if nscatter==0:
+
+        sfh_binned = sfh(t,dt,z,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
+        mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
+
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
+                                                         binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method)
+
+        zall = list( set(z) | set(zmerge) )
+        zall.sort(reverse=True)
+        assert len(zall)==len(z),'redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
+
+        mstar_tot = [ interp(za,z[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ]
+
+        return t,z,vsmooth,mstar_tot
+
+    else:
+
+        sfh_binned = []
+        mstar_binned = []
+        mstar_binned_tot = []
+
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
+                                                         binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
+        zall = list( set(z) | set(zmerge) )
+        zall.sort(reverse=True)
+        assert len(zall)==len(z),'redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
+
+        for iis in range(nscatter):
+            sfh_binned += [ sfh(t,dt,z,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method) ]
+            mstar_binned += [ array([0] + [ sum(sfh_binned[-1][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ]) ]
+            mstar_binned_tot += [ [ interp(za,z[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zall ] ]
+
+        sfh_binned = array(sfh_binned)
+        mstar_binned = array(mstar_binned)
+        mstar_binned_tot = array(mstar_binned_tot)
+
+        sfh_stats       = array([ percentile(sfh_binned      [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
+        mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
+        mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zall)) ])
+            
+        return t,z,vsmooth,mstar_tot_stats[1]  # use the medians
 
 
 
@@ -107,10 +184,10 @@ def accreted_stars(halo, vthres=26., zre=4., binning='3bins', plot_mergers=False
     for ii,im in enumerate(range(len(zmerge))):
         t_sub,z_sub,rbins_sub,mencDM_sub = hmerge[im][1].calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
         vmax_sub = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(mencDM_sub,rbins_sub) ])
-        tre = interp(zre, z_sub, t_sub)
         
         if len(t_sub)==0: continue  # skip if no mass profile data
-
+        tre = interp(zre, z_sub, t_sub)
+        
         # catch when merger tree loops back on itself --> double-counting
         h = hmerge[im][1]
         depth = -1
