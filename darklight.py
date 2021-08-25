@@ -17,16 +17,27 @@ G   = 4.30092e-6  # kpc km^2 / MSUN / s^2
 ##################################################
 # DARKLIGHT
 
-def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25):
+def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25,mergers=True):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
     relation to reduce temporary jumps in vmax due to mergers. Returns the
     timesteps t, z, the smoothed vmax trajectory, and M*.
-    
+
+    Notes on Inputs: 
+    mergers = whether or not to include the contribution to M* from in-situ
+        star formation, mergers, or both.
+
+        True = include  M* of halos that merged with main halo
+        False = only compute M* of stars that formed in-situ in main-halo
+        'only' = only compute M* of mergers
+
     timestepping = resolution of SFH, in Gyr
     """
 
+    assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
+
+    
     t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
     ntimesteps = len(t)
     vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ])
@@ -41,25 +52,35 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
     if zre not in z:
         t = concatenate([ t[:ire], [interp(zre,z,t)], t[ire:] ])
         z = concatenate([ z[:ire], [zre], z[ire:] ])
-    vsmooth = interp(t, t500myr, vsmooth500myr)
-    dt = t[1:]-t[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
-
+    tt = t[::-1]  # reverse arrays so time is increasing
+    zz = z[::-1]
+    vsmooth = interp(tt, t500myr, vsmooth500myr)
+    dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
+    print('tt',tt)
+    
     # generate the star formation histories
     if nscatter==0:
 
-        sfh_binned = sfh(t,dt,z,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
-        mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
+        if mergers != 'only':
+
+            sfh_binned = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
+            print(sfh_binned)
+            mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
+            if mergers == False:  return tt,zz,vsmooth,mstar_binned
+
+        else:
+            mstar_binned = zeros(len(tt))
 
         zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
                                                          binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method)
 
-        zall = list( set(z) | set(zmerge) )
+        zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
-        assert len(zall)==len(z),'redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
+        assert len(zall)==len(zz),'DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
 
-        mstar_tot = [ interp(za,z[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ]
+        mstar_tot = [ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ]
 
-        return t,z,vsmooth,mstar_tot
+        return tt,zz,vsmooth,mstar_tot
 
     else:
 
@@ -69,24 +90,30 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
 
         zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
                                                          binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
-        zall = list( set(z) | set(zmerge) )
+        zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
-        assert len(zall)==len(z),'redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
+        assert len(zall)==len(zz),'DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
 
         for iis in range(nscatter):
-            sfh_binned += [ sfh(t,dt,z,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method) ]
-            mstar_binned += [ array([0] + [ sum(sfh_binned[-1][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ]) ]
-            mstar_binned_tot += [ [ interp(za,z[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zall ] ]
+
+            if mergers != 'only':
+                sfh_binned += [ sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method) ]
+                mstar_binned += [ array([0] + [ sum(sfh_binned[-1][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ]) ]
+            else:
+                sfh_binned += [ zeros(len(tt)) ]
+                mstar_binned += [ zeros(len(tt)) ]
+                
+            mstar_binned_tot += [ [ interp(za,zz[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zall ] ]
 
         sfh_binned = array(sfh_binned)
         mstar_binned = array(mstar_binned)
         mstar_binned_tot = array(mstar_binned_tot)
 
-        sfh_stats       = array([ percentile(sfh_binned      [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
-        mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
+        sfh_stats       = array([ percentile(sfh_binned      [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
+        mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
         mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zall)) ])
             
-        return t,z,vsmooth,mstar_tot_stats[1]  # use the medians
+        return tt,zz,vsmooth,mstar_tot_stats[1] if mergers==True else mstar_stats[1]  # use the medians
 
 
 
