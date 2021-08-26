@@ -56,7 +56,6 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
     zz = z[::-1]
     vsmooth = interp(tt, t500myr, vsmooth500myr)
     dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
-    print('tt',tt)
     
     # generate the star formation histories
     if nscatter==0:
@@ -64,7 +63,6 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         if mergers != 'only':
 
             sfh_binned = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
-            print(sfh_binned)
             mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
             if mergers == False:  return tt,zz,vsmooth,mstar_binned
 
