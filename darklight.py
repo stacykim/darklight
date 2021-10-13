@@ -11,13 +11,13 @@ import scipy.ndimage.filters as filters
 from tangos.examples.mergers import *
 
 G   = 4.30092e-6  # kpc km^2 / MSUN / s^2
-
+fbaryon = 0.17
 
 
 ##################################################
 # DARKLIGHT
 
-def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25,mergers=True):
+def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25,mergers=True,DMO=False):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
@@ -33,6 +33,9 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         'only' = only compute M* of mergers
 
     timestepping = resolution of SFH, in Gyr
+
+    DMO = True if running on a DMO simluation.  Will then multiply particle
+        masses by 
     """
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
@@ -40,7 +43,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
     
     t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
     ntimesteps = len(t)
-    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ])
+    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ]) * (sqrt(1-fbaryon) if DMO else 1)
     ire = where(z>=zre)[0][0]
 
     # smooth vmax rotation curve
