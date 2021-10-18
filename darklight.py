@@ -79,7 +79,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         zall.sort(reverse=True)
         assert len(zall)==len(zz),'DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
 
-        mstar_tot = [ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ]
+        mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ])
 
         return tt,zz,vsmooth,mstar_tot
 
