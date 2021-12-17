@@ -17,14 +17,21 @@ fbaryon = 0.17
 ##################################################
 # DARKLIGHT
 
-def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',timestepping=0.25,mergers=True,DMO=False):
+def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',
+              binning='3bins',timesteps='sim',mergers=True,DMO=False):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
     relation to reduce temporary jumps in vmax due to mergers. Returns the
-    timesteps t, z, the smoothed vmax trajectory, and M*.
+    timesteps t, z, the smoothed vmax trajectory, the in-situ star formation 
+    history, and M*.  If nscatter != 0, the SFH and M* are arrays with of the
+    [-2simga, median, +2sigma] values.
 
     Notes on Inputs: 
+
+    timsteps = resolution of SFH, in Gyr, or 'sim' to use simulation timesteps.
+        Used for both main and accreted halos.
+    
     mergers = whether or not to include the contribution to M* from in-situ
         star formation, mergers, or both.
 
@@ -32,48 +39,58 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         False = only compute M* of stars that formed in-situ in main-halo
         'only' = only compute M* of mergers
 
-    timestepping = resolution of SFH, in Gyr
-
     DMO = True if running on a DMO simluation.  Will then multiply particle
-        masses by 
+        masses by sqrt(1-fbary).
     """
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
 
     
     t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-    ntimesteps = len(t)
-    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(ntimesteps) ]) * (sqrt(1-fbaryon) if DMO else 1)
-    ire = where(z>=zre)[0][0]
+    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-fbaryon) if DMO else 1)
 
     # smooth vmax rotation curve
     t500myr = arange(t[-1],t[0],0.5)  # NOTE: interpolated in 500 Myr bins
     v500myr = interp(t500myr,t[::-1],vmax[::-1])
     vsmooth500myr = filters.gaussian_filter1d(v500myr,sigma=1)    
 
-    # make sure reionization included in time steps
-    if zre not in z:
-        t = concatenate([ t[:ire], [interp(zre,z,t)], t[ire:] ])
-        z = concatenate([ z[:ire], [zre], z[ire:] ])
-    tt = t[::-1]  # reverse arrays so time is increasing
-    zz = z[::-1]
-    vsmooth = interp(tt, t500myr, vsmooth500myr)
-    dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
     
-    # generate the star formation histories
+    ############################################################
+    # Get values at points where DarkLight SFH will be calculated
+
+    if timesteps == 'sim':
+        tt = t[::-1]  # reverse arrays so time is increasing
+        zz = z[::-1]
+    else:
+        tt = arange(t[-1],t[0],timesteps)
+        zz = interp(tt, t[::-1], z[::-1])
+    
+    if zre not in zz:  # make sure reionization included in time steps
+        ire = where(zz<=zre)[0][0]
+        tt = concatenate([ tt[:ire], [interp(zre,z,t)], tt[ire:] ])
+        zz = concatenate([ zz[:ire], [zre],             zz[ire:] ])
+
+    dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
+    vsmooth = interp(tt, t500myr, vsmooth500myr)
+
+
+    ############################################################
+    # Generate the star formation histories
+    
     if nscatter==0:
 
         if mergers != 'only':
 
             sfh_binned = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
             mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
-            if mergers == False:  return tt,zz,vsmooth,mstar_binned
+            if mergers == False:  return tt,zz,vsmooth,sfh_binned,mstar_binned
 
         else:
             mstar_binned = zeros(len(tt))
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,
                                                          binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method)
+        print('msmerge',msmerge)
 
         zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
@@ -81,7 +98,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
 
         mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ])
 
-        return tt,zz,vsmooth,mstar_tot
+        return tt,zz,vsmooth,sfh_binned,mstar_tot
 
     else:
 
@@ -89,7 +106,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         mstar_binned = []
         mstar_binned_tot = []
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timestep=timestepping,
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,
                                                          binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
         zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
@@ -114,7 +131,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,binning='3bins',pre_method='fid
         mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
         mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zall)) ])
             
-        return tt,zz,vsmooth,mstar_tot_stats[1] if mergers==True else mstar_stats[1]  # use the medians
+        return tt,zz,vsmooth,sfh_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
 
 
 
@@ -179,13 +196,14 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
 ##################################################
 # ACCRETED STARS
 
-def accreted_stars(halo, vthres=26., zre=4., binning='3bins', plot_mergers=False, timestep=0.250, verbose=False, nscatter=0, pre_method='fiducial',post_method='schechter'):
+def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, nscatter=0, pre_method='fiducial',post_method='schechter',
+                   binning='3bins', timesteps='sim'):
     """
     Returns redshift, major/minor mass ratio, halo objects, and stellar mass accreted 
     for each of the given halo's mergers.  Does not compute the stellar contribution
     of mergers of mergers.
 
-    timestep = in Gyr, or 'orig' to use simulation output timesteps
+    timestep = in Gyr, or 'sims' to use simulation output timesteps
     """
 
     t,z,rbins,menc = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
@@ -234,32 +252,32 @@ def accreted_stars(halo, vthres=26., zre=4., binning='3bins', plot_mergers=False
         # went through all fail conditions, now calculate vmax trajectory, SFH --> M*
         if len(t_sub)==1:
             zz_sub,tt_sub,vv_sub = z_sub,t_sub,vmax_sub
-        elif timestep == 'orig':
+        elif timesteps == 'sim':
             # smooth with 500 myr timestep
             tv = arange(t[-1],t[0],0.5)
-            vi = interp(tv,t[::-1],vmax_sub[::-1])
+            vi = interp(tv,t_sub[::-1],vmax_sub[::-1])
             fv = filters.gaussian_filter(vi,sigma=1)
-            if z_sub[0] < zre:
-                ire = where(z>=zre)[0][0]
+            if z_sub[-1] > zre:
+                ire = where(z_sub>=zre)[0][0]
                 zz_sub = concatenate([z_sub[:ire],[zre],z_sub[ire:]])[::-1]
                 tt_sub = concatenate([t_sub[:ire],[tre],t_sub[ire:]])[::-1]
-                vv_sub = interp(tt, tv, fv) #concatenate([vmax_sub[:ire],[interp(zre,z_sub,vmax_sub)],vmax_sub[ire:]])[::-1] # interp in z, which approx vmax evol better
+                vv_sub = interp(tt_sub, tv, fv) #concatenate([vmax_sub[:ire],[interp(zre,z_sub,vmax_sub)],vmax_sub[ire:]])[::-1] # interp in z, which approx vmax evol better
             else:
-                zz_sub,tt_sub,vv_sub = z_sub[::-1],t_sub[::-1],interp(tt, tv, fv) #vmax_sub[::-1]
+                zz_sub,tt_sub,vv_sub = z_sub[::-1],t_sub[::-1],interp(t_sub[::-1], tv, fv) #vmax_sub[::-1]
         else:
             # smooth with given timestep
-            tv = arange(t_sub[-1],t_sub[0],timestep)
+            tv = arange(t_sub[-1],t_sub[0],timesteps)
             vi = interp(tv,t_sub[::-1],vmax_sub[::-1])
             fv = filters.gaussian_filter1d(vi,sigma=1)
             # calculate usual values
-            tt_sub = arange(t_sub[-1],t_sub[0],timestep)
+            tt_sub = arange(t_sub[-1],t_sub[0],timesteps)
             if len(tt_sub)==0:
                 print('Got zero timepoints to calculate SFR for:')
                 print('t_sub',t_sub)
                 print('tt_sub',tt_sub)
                 exit()
             zz_sub = interp(tt_sub, t_sub[::-1], z_sub[::-1])
-            if zz_sub[-1] > zre and interp( tt_sub[-1]+timestep, t_sub, z_sub ) < zre:
+            if zz_sub[-1] > zre and interp( tt_sub[-1]+timesteps, t_sub, z_sub ) < zre:
                 append(zz_sub,[zre])
                 append(tt_sub,interp(zre,z,t))
                 print('zz_sub',zz_sub)
@@ -271,7 +289,10 @@ def accreted_stars(halo, vthres=26., zre=4., binning='3bins', plot_mergers=False
             #vv_sub = interp(tt_sub, t_sub[::-1], vmax_sub[::-1]) # for some reason no smoothing was selected - 2020.01.15
 
         #vv_sub = array([ max(vv_sub[:i+1]) for i in range(len(vv_sub)) ])  # vmaxes fall before infall, so use max vmax (after smoothing)
-        dt_sub = array([timestep]) if len(tt_sub)==1 else tt_sub[1:]-tt_sub[:-1] # len(dt_sub) = len(tt_sub)-1
+        if len(tt_sub)==1:
+            dt_sub = array([timesteps if timesteps != 'sim' else 0.150 ]) # time resolution of EDGE
+        else:
+            dt_sub = tt_sub[1:]-tt_sub[:-1] # len(dt_sub) = len(tt_sub)-1
         
         if nscatter == 0:
             sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,pre_method=pre_method,post_method=post_method,scatter=False)
