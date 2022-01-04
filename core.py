@@ -9,9 +9,7 @@ import matplotlib.pyplot as plt
 import scipy.ndimage.filters as filters
 
 from tangos.examples.mergers import *
-
-G   = 4.30092e-6  # kpc km^2 / MSUN / s^2
-fbaryon = 0.17
+from .constants import *
 
 
 ##################################################
@@ -47,7 +45,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     
     t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-fbaryon) if DMO else 1)
+    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
 
     # smooth vmax rotation curve
     t500myr = arange(t[-1],t[0],0.5)  # NOTE: interpolated in 500 Myr bins
