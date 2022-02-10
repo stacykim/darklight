@@ -57,7 +57,7 @@ def load_tangos_data(simname,machine='astro'):
 
 
 
-def load_pynbody_data(simname,output_num=-1,machine='astro'):
+def load_pynbody_data(simname,output=-1,machine='astro'):
     """
     Returns the particle data for the given simulation and output number.
     By default, returns the z=0 output, which is specified via '-1'.
@@ -89,13 +89,13 @@ def load_pynbody_data(simname,output_num=-1,machine='astro'):
         print('full hydro particle data does not exist!')
         exit()
 
-    if output_num == -1:
+    if output == -1:
         # get all the outputs and grab the highest numbered one
         snapshots = glob.glob(os.path.join(pynbody_path,simname,'output_*'))
         snapshots.sort()
         simfn = os.path.join(pynbody_path,simname,snapshots[-1])
     else:
-        simfn = os.path.join(pynbody_path,simname,'output_'+str(output_num).zfill(5))
+        simfn = os.path.join(pynbody_path,simname,'output_'+str(output).zfill(5))
 
     try:  particles = pynbody.load(simfn)
     except:
@@ -103,6 +103,7 @@ def load_pynbody_data(simname,output_num=-1,machine='astro'):
         print('attempted read of',simfn)
         exit()
 
+    print('read',simfn)
     return particles
 
 
@@ -124,9 +125,6 @@ def rebin_sfh(t_new, t_old, sfh_old):
     mstar_old = sfh_old * dt_old # in whatever time units SFH is given (cancels out later)
     
     indicies = np.digitize(t_new, t_old)  # gives i s.t. bins[i-1] <= x < bins[i]
-    print('indicies',indicies)
-    print('t_new last',t_new[-1])
-    print('t_old last',t_old[-1])
     sfh_new = np.zeros(len(t_new)-1)
     for i in range(len(t_new)-1):
         #print('\non t_new element',i)
@@ -141,7 +139,9 @@ def rebin_sfh(t_new, t_old, sfh_old):
         else:
             frac1 = (t_new[i+1] - t_old[iold1-1]) / dt_old[iold1-1]
         #print('falls in intervals iold1',iold1,'=',t_old[iold1-1],'to',t_old[iold1],'frac1',frac1)
-        sfh_new[i] = (frac0*mstar_old[iold0-1] + sum(mstar_old[iold0:iold1]) + frac1*mstar_old[iold1-1]) / (t_new[i+1]-t_new[i])
+
+        #sfh_new[i] = (frac0*mstar_old[iold0-1] + sum(mstar_old[iold0:iold1]) + frac1*mstar_old[iold1-1]) / (t_new[i+1]-t_new[i])
+        sfh_new[i] = (frac0*sfh_old[iold0-1] + sum(sfh_old[iold0:iold1]) + frac1*sfh_old[iold1-1]) / (frac0 + frac1 + iold1-iold0)
         #print('sfh_old')
         #print(sfh_old[iold0-1],frac0,'-->',frac0*mstar_old[iold0-1])
         #for j in range(iold0,iold1): print(sfh_old[j],1.,mstar_old[j])
@@ -151,15 +151,21 @@ def rebin_sfh(t_new, t_old, sfh_old):
         
         #if i==5: exit()
         
-    print('last new timepoint',t_new[-1],'gyr')
-    print('old mstar',sum(mstar_old*GYR))
+    #print('last new timepoint',t_new[-1],'gyr')
+    #print('old mstar',sum(mstar_old*GYR))
     dt_new = t_new[1:] - t_new[:-1]
-    print('new mstar',sum(sfh_new*dt_new*GYR))
+    #print('new mstar',sum(sfh_new*dt_new*GYR))
     return sfh_new
     
 
-def plot_darklight_vs_edge_mstar(halo, t,vsmooth,sfh_insitu,mstar,mstar_insitu=None, zre=4., figfn=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu=None, zre=4., figfn=None):
+    """
+    Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
+    mstar_insitu) are increasing in time.
+    """
 
+    tre = np.interp(zre,z[::-1],t[::-1])  # time of reionization, Gyr
+    
     # plotting preliminaries
     fig1 = plt.figure(figsize=(5,6.25))
     gs   = fig1.add_gridspec(ncols=1,nrows=7,hspace=0)
@@ -171,37 +177,39 @@ def plot_darklight_vs_edge_mstar(halo, t,vsmooth,sfh_insitu,mstar,mstar_insitu=N
 
     # get halo data
     t_edge,z_edge,mstar_edge,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile')
-    vmax_edge = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
-    tre = interp(zre,z_edge,t_edge)
+    vmax_edge = np.array([ np.sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
+    tre = np.interp(zre,z_edge,t_edge)
     
-    sfh_edge_raw = halo.calculate('SFR_histogram')  # only take SFH at last time; dt = 0.02 Gyr
-    tsfh_edge_raw = arange(0.,t[0],0.02)  # not midpoints, but left of bin
-    mstar_edge_insitu = array([sum(sfh_edge_raw[:i]) for i in range(len(sfh_edge_raw)) ]) * (0.02*1e9)  # multliply by dt
+    tsfh_edge_raw = np.arange(0,t[-1],0.02) # not midpoints, but left of bin
+    try: sfh_edge_raw = halo.calculate('SFR_histogram')  # only take SFH at last time; dt = 0.02 Gyr
+    except: sfh_edge_raw = np.zeros(len(tsfh_edge_raw)-1)
+    mstar_edge_insitu = np.concatenate([[0],np.array([sum(sfh_edge_raw[:i]) for i in range(len(sfh_edge_raw)) ]) * (0.02*1e9)])  # multliply by dt
     sfh_edge = rebin_sfh(t, tsfh_edge_raw,sfh_edge_raw)
     #sfh_100myr = [ sum(sfh_edge[i*5:i*5+5])/5. for i in range(int(len(sfh_edge)/5)) ]  # rebin to 100 myr intervals
     #tsfh_100myr = arange(0.05,0.1*len(sfh_100myr),0.1)
 
 
     # plot the vmaxes
+    ylims = [4,36]
     ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
-    ax1a.plot(tre*ones(2),ylims,'k--')
+    ax1a.plot(tre*np.ones(2),ylims,'k--')
 
     # plot the SFHs
     dt = t[1:] - t[:-1]
     ax1b.bar(t[:-1],sfh_insitu[:-1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
-    ax1b.bar(tsfh_edge[:-1],sfh_edge[:-1],alpha=0.25,width=dtsfh_edge,color='k',label='EDGE')
+    ax1b.bar(t[:-1],sfh_edge,alpha=0.25,width=dt,color='k',align='edge',label='EDGE')
+    ax2.plot(tre*np.ones(2),ylims,'k--')
 
     # plot the mstar trajectories
     ax2.plot(t,mstar,'C0',label='DarkLight')
-    if mstar_insitu != None: ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
+    if hasattr(mstar_insitu,'__iter__'): ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
     ax2.plot(t_edge,mstar_edge,color='k',label='EDGE')
-    ax2.plot(tsfh_edge,mstar_edge_insitu,color='0.7')
-    ax2.plot(cosmo.age(zre)*ones(2),ylims,'k--')
+    ax2.plot(tsfh_edge_raw,mstar_edge_insitu,color='0.7')
+    ax2.plot(tre*np.ones(2),ylims,'k--')
 
         
     # finishing touches
-    ylims = [4,36]
     ax1a.set_ylim(ylims)
     ax1a.set_ylabel(r'v$_{\rm max}$ (km/s)')
 
