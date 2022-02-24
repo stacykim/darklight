@@ -2,7 +2,7 @@
 # created 2020.03.20 by stacy kim
 
 from numpy import *
-from numpy.random import normal
+from numpy.random import normal,random
 import matplotlib as mpl
 mpl.use('PDF')
 import matplotlib.pyplot as plt
@@ -11,12 +11,29 @@ import scipy.ndimage.filters as filters
 from tangos.examples.mergers import *
 from .constants import *
 
+vocc_edges = array([2., 9., 16., 23., 30.])
+vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
+focc = array([0.033, 0.141, 0.250, 1.0])
+
+
 
 ##################################################
 # DARKLIGHT
 
+def smooth(t,y,tnew,sigma=0.5):
+    """
+    Smooths the given trajectory y(t) with a gaussian over timescales given by
+    sigma, and returns the smoothed values at tnew.  Assumes t is in ascending order.
+    """
+    # smooth vmax rotation curve
+    tgrid = arange(t[0],t[-1],sigma)  # NOTE: interpolated in 500 Myr bins
+    ygrid = interp(tgrid,t,y)
+    ysmooth = filters.gaussian_filter1d(ygrid,sigma=1)
+    return interp(tnew,tgrid,ysmooth)    
+
+
 def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,poccupied=True,fn_vmax=None):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
@@ -43,14 +60,14 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
 
-    
-    t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-    vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
 
-    # smooth vmax rotation curve
-    t500myr = arange(t[-1],t[0],0.5)  # NOTE: interpolated in 500 Myr bins
-    v500myr = interp(t500myr,t[::-1],vmax[::-1])
-    vsmooth500myr = filters.gaussian_filter1d(v500myr,sigma=1)    
+    if fn_vmax==None:
+        t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
+        vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
+    else:
+        z = halo.calculate_for_progenitors('z()')[0]
+        t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
+        t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
 
     
     ############################################################
@@ -69,8 +86,8 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         zz = concatenate([ zz[:ire], [zre],             zz[ire:] ])
 
     dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
-    vsmooth = interp(tt, t500myr, vsmooth500myr)
-
+    vsmooth = smooth(t[::-1],vmax[::-1],tt,sigma=0.5) # smoothed over 500 Myr
+    
 
     ############################################################
     # Generate the star formation histories
@@ -81,22 +98,25 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
             sfh_binned = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
             mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
-            if mergers == False:  return tt,zz,vsmooth,sfh_binned,mstar_binned
+            if mergers == False:  return tt,zz,vsmooth,sfh_binned,mstar_binned,zeros(len(mstar_binned))
 
         else:
             mstar_binned = zeros(len(tt))
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
                                                          binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method)
-        print('msmerge',msmerge)
-
         zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
-        assert len(zall)==len(zz),'DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
+        if len(zall)!=len(zz):
+            print('DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length')
+            print('len(tangos+merger z)',len(zall),'len(tangos z)',len(zz))
+            print('tangos z',zz)
+            print('merger z',zmerge)
+            exit()
 
         mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ])
 
-        return tt,zz,vsmooth,sfh_binned,mstar_tot
+        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_tot
 
     else:
 
@@ -104,7 +124,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_binned = []
         mstar_binned_tot = []
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
                                                          binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
         zall = list( set(zz) | set(zmerge) )
         zall.sort(reverse=True)
@@ -129,7 +149,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
         mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zall)) ])
             
-        return tt,zz,vsmooth,sfh_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+        return tt,zz,vsmooth,sfh_stats,mstar_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
 
 
 
@@ -195,7 +215,7 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
 # ACCRETED STARS
 
 def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, nscatter=0, pre_method='fiducial',post_method='schechter',
-                   binning='3bins', timesteps='sim'):
+                   binning='3bins', timesteps='sim',poccupied=True, DMO=False):
     """
     Returns redshift, major/minor mass ratio, halo objects, and stellar mass accreted 
     for each of the given halo's mergers.  Does not compute the stellar contribution
@@ -208,7 +228,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
     
     if plot_mergers:
         implot = 0
-        vmax = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(menc,rbins) ])
+        vmax = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(menc,rbins) ]) * (sqrt(1-FBARYON) if DMO else 1)
         fig, ax = plt.subplots()
         plt.plot(t,vmax,color='k')
   
@@ -226,7 +246,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
     
     for ii,im in enumerate(range(len(zmerge))):
         t_sub,z_sub,rbins_sub,mencDM_sub = hmerge[im][1].calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-        vmax_sub = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(mencDM_sub,rbins_sub) ])
+        vmax_sub = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(mencDM_sub,rbins_sub) ]) * (sqrt(1-FBARYON) if DMO else 1)
         
         if len(t_sub)==0: continue  # skip if no mass profile data
         tre = interp(zre, z_sub, t_sub)
@@ -285,25 +305,46 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                 insert(tt_sub, izzre, interp(zre,z,t))
             vv_sub = interp(tt_sub, tv, fv)
             #vv_sub = interp(tt_sub, t_sub[::-1], vmax_sub[::-1]) # for some reason no smoothing was selected - 2020.01.15
-
+            
         #vv_sub = array([ max(vv_sub[:i+1]) for i in range(len(vv_sub)) ])  # vmaxes fall before infall, so use max vmax (after smoothing)
         if len(tt_sub)==1:
             dt_sub = array([timesteps if timesteps != 'sim' else 0.150 ]) # time resolution of EDGE
         else:
             dt_sub = tt_sub[1:]-tt_sub[:-1] # len(dt_sub) = len(tt_sub)-1
         
-        if nscatter == 0:
-            sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,pre_method=pre_method,post_method=post_method,scatter=False)
-            mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
-            msmerge[im] = mstar_binned_sub[-1]
-            #mstar_main = interp(zmerge[im],zz[::-1],mstar_binned[::-1])
-            #print('merger',im,'at z = {0:4.2f}'.format(zmerge[im]),'with {0:5.1e}'.format(mstar_binned_merge[im]),'msun stars vs {0:5.1e}'.format(mstar_main),'msun MAIN =',int(100.*mstar_binned_merge[im]/mstar_main),'%')
-        else:
-            for iis in range(nscatter):
-                sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method)
-                mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
-                msmerge[im,iis] = mstar_binned_sub[-1]
 
+        if poccupied==True: # and zz_sub[-1]>=4:
+            pocc = interp(vv_sub[-1], vocc, focc)
+
+
+        ############################################################
+        # now calculate the SFH and M* of the accreted things
+            
+        if nscatter == 0:
+
+            if poccupied==True and random() > pocc: # and zz_sub[-1]>=4:
+                msmerge[im] = 0
+            else:
+                sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,pre_method=pre_method,post_method=post_method,scatter=False)
+                mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
+                msmerge[im] = mstar_binned_sub[-1]
+                #mstar_main = interp(zmerge[im],zz[::-1],mstar_binned[::-1])
+                #print('merger',im,'at z = {0:4.2f}'.format(zmerge[im]),'with {0:5.1e}'.format(mstar_binned_merge[im]),'msun stars vs {0:5.1e}'.format(mstar_main),'msun MAIN =',int(100.*mstar_binned_merge[im]/mstar_main),'%')
+        else:
+
+            for iis in range(nscatter):
+
+                if poccupied==True and random() > pocc: # and zz_sub[-1]>=4:
+                    msmerge[im,iis] = 0
+                else:
+                    sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method)
+                    mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
+                    msmerge[im,iis] = mstar_binned_sub[-1]
+
+            print('for merger',ii,'at',round(interp(zmerge[ii],z,t),2),'Gyr has mass',mencDM_sub[-1][-1]/1e6,'1e6 msun, vmax',round(vmax_sub[-1]),'and pocc',round(pocc,3),'. Had non-zero M*',len(nonzero(msmerge[im])[0]),'times of',nscatter)
+
+
+                    
         if plot_mergers and implot < 10:
             plt.plot(t_sub,vmax_sub,color='C'+str(im),alpha=0.25)
             plt.plot(tt_sub, vv_sub,color='C'+str(im))
