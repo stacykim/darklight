@@ -341,7 +341,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                     mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
                     msmerge[im,iis] = mstar_binned_sub[-1]
 
-            print('for merger',ii,'at',round(interp(zmerge[ii],z,t),2),'Gyr has mass',mencDM_sub[-1][-1]/1e6,'1e6 msun, vmax',round(vmax_sub[-1]),'and pocc',round(pocc,3),'. Had non-zero M*',len(nonzero(msmerge[im])[0]),'times of',nscatter)
+            #print('for merger',ii,'at',round(interp(zmerge[ii],z,t),2),'Gyr has mass',mencDM_sub[-1][-1]/1e6,'1e6 msun, vmax',round(vmax_sub[-1]),'and pocc',round(pocc,3),'. Had non-zero M*',len(nonzero(msmerge[im])[0]),'times of',nscatter)
 
 
                     

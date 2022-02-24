@@ -158,13 +158,15 @@ def rebin_sfh(t_new, t_old, sfh_old):
     return sfh_new
     
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu=None, zre=4., figfn=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., figfn=None):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
     """
 
     tre = np.interp(zre,z[::-1],t[::-1])  # time of reionization, Gyr
+
+    plot_scatter = False if mstar.ndim==1 else True
     
     # plotting preliminaries
     fig1 = plt.figure(figsize=(5,6.25))
@@ -197,16 +199,27 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     # plot the SFHs
     dt = t[1:] - t[:-1]
-    ax1b.bar(t[:-1],sfh_insitu[:-1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
+    if plot_scatter:
+        ax1b.bar(t[:-1],sfh_insitu[:-1,1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
+    else:
+        ax1b.bar(t[:-1],sfh_insitu[:-1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
     ax1b.bar(t[:-1],sfh_edge,alpha=0.25,width=dt,color='k',align='edge',label='EDGE')
-    ax2.plot(tre*np.ones(2),ylims,'k--')
+    ax1b.axvline(tre,color='k',linestyle='--')
+
 
     # plot the mstar trajectories
-    ax2.plot(t,mstar,'C0',label='DarkLight')
-    if hasattr(mstar_insitu,'__iter__'): ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
+    if plot_scatter:
+        ax2.fill_between(t,mstar[:,0],mstar[:,2],color='C0',alpha=0.2)
+        ax2.fill_between(t,mstar[:,3],mstar[:,4],color='C0',alpha=0.1)
+        ax2.plot(t,mstar[:,1],'C0',label='DarkLight')
+        ax2.plot(t,mstar_insitu[:,1],'C0',alpha=0.3)
+    else:
+        ax2.plot(t,mstar,'C0',label='DarkLight')
+        ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
+
     ax2.plot(t_edge,mstar_edge,color='k',label='EDGE')
     ax2.plot(tsfh_edge_raw,mstar_edge_insitu,color='0.7')
-    ax2.plot(tre*np.ones(2),ylims,'k--')
+    ax2.axvline(tre,color='k',linestyle='--')
 
         
     # finishing touches
