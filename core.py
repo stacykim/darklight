@@ -105,16 +105,8 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
         zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
                                                          binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method)
-        zall = list( set(zz) | set(zmerge) )
-        zall.sort(reverse=True)
-        if len(zall)!=len(zz):
-            print('DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length')
-            print('len(tangos+merger z)',len(zall),'len(tangos z)',len(zz))
-            print('tangos z',zz)
-            print('merger z',zmerge)
-            exit()
 
-        mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zall ])
+        mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zz ])
 
         return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_tot
 
@@ -126,9 +118,6 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
         zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
                                                          binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
-        zall = list( set(zz) | set(zmerge) )
-        zall.sort(reverse=True)
-        assert len(zall)==len(zz),'DarkLight: redshift of merger(s) not in simulation redshifts! DarkLight will return arrays of mismatched length'
 
         for iis in range(nscatter):
 
@@ -139,7 +128,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
                 sfh_binned += [ zeros(len(tt)) ]
                 mstar_binned += [ zeros(len(tt)) ]
                 
-            mstar_binned_tot += [ [ interp(za,zz[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zall ] ]
+            mstar_binned_tot += [ [ interp(za,zz[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zz ] ]
 
         sfh_binned = array(sfh_binned)
         mstar_binned = array(mstar_binned)
@@ -147,7 +136,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
         sfh_stats       = array([ percentile(sfh_binned      [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
         mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
-        mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zall)) ])
+        mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zz)) ])
             
         return tt,zz,vsmooth,sfh_stats,mstar_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
 
