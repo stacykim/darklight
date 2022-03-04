@@ -1,4 +1,4 @@
-import os
+import os, glob
 import numpy as np
 import matplotlib as mpl
 mpl.rcParams.update({'font.size': 17})
@@ -19,7 +19,13 @@ def get_shortname(simname):
     shortname = split[0][4:]
     halonum = shortname[:]
     if len(split) > 2:
-        if   halonum=='332': shortname += 'low'
+
+        # EDGE2 WDMs
+        if 'wdm' in simname:
+            shortname += 'w'+simname.split('wdm')[1][0]
+
+        # EDGE1
+        elif halonum=='332': shortname += 'low'
         elif halonum=='383': shortname += 'late'
         elif halonum=='600': shortname += 'lm'
         elif halonum=='624': shortname += 'hm'
@@ -30,9 +36,18 @@ def get_shortname(simname):
             print('unsupported simulation',simname,'! Not sure what shortname to give it. Aborting...')
             exit()
     elif len(split)==2 and simname[-3:] == '_RT':  shortname += 'RT'
-    #DMOname = 'Halo'+halonum+'_DMO' if split[-1]=='fiducial' else None
+
+    if 'DMO' in simname:  shortname += '_dmo'
 
     return halonum, shortname
+
+
+
+def get_number_of_snapshots(simname,machine='astro'):
+    
+    path = get_pynbody_path(simname,machine=machine)
+    snapshots = glob.glob(os.path.join(path,'output_*'))
+    return len(snapshots)
 
 
 
@@ -57,7 +72,35 @@ def load_tangos_data(simname,machine='astro'):
 
 
 
-def load_pynbody_data(simname,output=-1,machine='astro'):
+def get_pynbody_path(simname,machine='astro'):
+
+    halonum, shortname = get_shortname(simname)
+
+    if machine=='astro':
+
+        if halonum=='383':
+            return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
+        elif halonum != shortname:
+            return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
+        else:
+            return '/vol/ph/astro_data/shared/morkney/EDGE/{0}/'.format(simname)
+
+    elif machine == 'dirac':
+
+        # need to implement other paths, but this will do for now
+        if not (halonum=='153' or halonum=='261' or halonum=='339'):
+            print('path for',simname,'on dirac not coded in yet >.<')
+            exit()
+
+        return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
+
+    else:
+        print('support for machine',machine,'not implemented!')
+        exit()
+
+
+
+def load_pynbody_data(simname,output=-1,machine='astro',verbose=True):
     """
     Returns the particle data for the given simulation and output number.
     By default, returns the z=0 output, which is specified via '-1'.
@@ -65,37 +108,19 @@ def load_pynbody_data(simname,output=-1,machine='astro'):
     
     import pynbody
     
-    halonum, shortname = get_shortname(simname)
+    path = get_pynbody_path(simname,machine=machine)
 
-    if machine=='astro':
-
-        pynbody_path_edge    = '/vol/ph/astro_data/shared/morkney/EDGE/'
-        pynbody_path_edgeGMs = '/vol/ph/astro_data2/shared/morkney/EDGE_GM/'
-        pynbody_path_chimera = '/vol/ph/astro_data/shared/etaylor/CHIMERA/'
-
-        if halonum=='383':
-            pynbody_path = pynbody_path_chimera
-        elif halonum != shortname:
-            pynbody_path = pynbody_path_edgeGMs
-        else:
-            pynbody_path = pynbody_path_edge
-            
-    else:
-
-        print('support for machine',machine,'not implemented!')
-        exit()
-
-    if not os.path.isdir(pynbody_path+simname):
-        print('full hydro particle data does not exist!')
+    if not os.path.isdir(path):
+        print('Full hydro particle data does not exist! Aborting...')
         exit()
 
     if output == -1:
         # get all the outputs and grab the highest numbered one
-        snapshots = glob.glob(os.path.join(pynbody_path,simname,'output_*'))
+        snapshots = glob.glob(os.path.join(path,'output_*'))
         snapshots.sort()
-        simfn = os.path.join(pynbody_path,simname,snapshots[-1])
+        simfn = os.path.join(path,snapshots[-1])
     else:
-        simfn = os.path.join(pynbody_path,simname,'output_'+str(output).zfill(5))
+        simfn = os.path.join(path,'output_'+str(output).zfill(5))
 
     try:  particles = pynbody.load(simfn)
     except:
@@ -103,7 +128,7 @@ def load_pynbody_data(simname,output=-1,machine='astro'):
         print('attempted read of',simfn)
         exit()
 
-    print('read',simfn)
+    if verbose:  print('read',simfn)
     return particles
 
 
