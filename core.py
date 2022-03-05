@@ -65,9 +65,11 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
-        z = halo.calculate_for_progenitors('z()')[0]
-        t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
-        t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        #z = halo.calculate_for_progenitors('z()')[0]
+        #t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
+        #t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        t,z,vmax = loadtxt(fn_vmax,unpack=True)
+        t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
 
     
     ############################################################
@@ -116,8 +118,9 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_binned = []
         mstar_binned_tot = []
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
-                                                         binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
+        if mergers != False:
+            zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
+                                                             binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method)
 
         for iis in range(nscatter):
 
@@ -128,7 +131,10 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
                 sfh_binned += [ zeros(len(tt)) ]
                 mstar_binned += [ zeros(len(tt)) ]
                 
-            mstar_binned_tot += [ [ interp(za,zz[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zz ] ]
+            if mergers == False:
+                mstar_binned_tot = mstar_binned
+            else:
+                mstar_binned_tot += [ [ interp(za,zz[::-1],mstar_binned[-1][::-1]) + sum(msmerge[zmerge>=za,iis])  for za in zz ] ]
 
         sfh_binned = array(sfh_binned)
         mstar_binned = array(mstar_binned)

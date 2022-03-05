@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib as mpl
 mpl.rcParams.update({'font.size': 17})
 mpl.rcParams.update({'font.family': 'serif'})
-mpl.rcParams.update({'text.usetex': True})
+#mpl.rcParams.update({'text.usetex': True})
 import matplotlib.pyplot as plt
 from .constants import *
 
@@ -183,7 +183,7 @@ def rebin_sfh(t_new, t_old, sfh_old):
     return sfh_new
     
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., figfn=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -194,26 +194,36 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     plot_scatter = False if mstar.ndim==1 else True
     
     # plotting preliminaries
-    fig1 = plt.figure(figsize=(5,6.25))
-    gs   = fig1.add_gridspec(ncols=1,nrows=7,hspace=0)
-    ax1a = fig1.add_subplot(gs[:4,0])
-    ax1b = ax1a.twinx()
-    ax2  = fig1.add_subplot(gs[4:,0],sharex=ax1a)
-    plt.setp(ax1a.get_xticklabels(),visible=False)
-
+    if not plot_separately:
+        fig1 = plt.figure(figsize=(5,6.25))
+        gs   = fig1.add_gridspec(ncols=1,nrows=7,hspace=0)
+        ax1a = fig1.add_subplot(gs[:4,0])
+        ax1b = ax1a.twinx()
+        ax2  = fig1.add_subplot(gs[4:,0],sharex=ax1a)
+        plt.setp(ax1a.get_xticklabels(),visible=False)
+    else:
+        fig1 = plt.figure(1)
+        ax1a = fig1.add_subplot(111)
+        ax1b = ax1a.twinx()
+        fig2 = plt.figure(2)
+        ax2  = fig2.add_subplot(111)
 
     # get halo data
-    t_edge,z_edge,mstar_edge,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile')
-    vmax_edge = np.array([ np.sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
-    tre = np.interp(zre,z_edge,t_edge)
+    if fn_vmax==None:
+        t_edge,z_edge,mstar_edge,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile')
+        vmax_edge = np.array([ np.sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
+        tre = np.interp(zre,z_edge,t_edge)
     
-    tsfh_edge_raw = np.arange(0,t[-1],0.02) # not midpoints, but left of bin
-    try: sfh_edge_raw = halo.calculate('SFR_histogram')  # only take SFH at last time; dt = 0.02 Gyr
-    except: sfh_edge_raw = np.zeros(len(tsfh_edge_raw)-1)
-    mstar_edge_insitu = np.concatenate([[0],np.array([sum(sfh_edge_raw[:i]) for i in range(len(sfh_edge_raw)) ]) * (0.02*1e9)])  # multliply by dt
-    sfh_edge = rebin_sfh(t, tsfh_edge_raw,sfh_edge_raw)
-    #sfh_100myr = [ sum(sfh_edge[i*5:i*5+5])/5. for i in range(int(len(sfh_edge)/5)) ]  # rebin to 100 myr intervals
-    #tsfh_100myr = arange(0.05,0.1*len(sfh_100myr),0.1)
+        tsfh_edge_raw = np.arange(0,t[-1],0.02) # not midpoints, but left of bin
+        try: sfh_edge_raw = halo.calculate('SFR_histogram')  # only take SFH at last time; dt = 0.02 Gyr
+        except: sfh_edge_raw = np.zeros(len(tsfh_edge_raw)-1)
+        mstar_edge_insitu = np.concatenate([[0],np.array([sum(sfh_edge_raw[:i]) for i in range(len(sfh_edge_raw)) ]) * (0.02*1e9)])  # multliply by dt
+        sfh_edge = rebin_sfh(t, tsfh_edge_raw,sfh_edge_raw)
+        #sfh_100myr = [ sum(sfh_edge[i*5:i*5+5])/5. for i in range(int(len(sfh_edge)/5)) ]  # rebin to 100 myr intervals
+        #tsfh_100myr = arange(0.05,0.1*len(sfh_100myr),0.1)
+    else:
+        t_edge,z_edge,vmax_edge = np.loadtxt(fn_vmax,unpack=True)
+        t_edge,z_edge,vmax_edge = t_edge[::-1],z_edge[::-1],vmax_edge[::-1] # expects them to be in backwards time order
 
 
     # plot the vmaxes
@@ -228,7 +238,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
         ax1b.bar(t[:-1],sfh_insitu[:-1,1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
     else:
         ax1b.bar(t[:-1],sfh_insitu[:-1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
-    ax1b.bar(t[:-1],sfh_edge,alpha=0.25,width=dt,color='k',align='edge',label='EDGE')
+    if fn_vmax==None:  ax1b.bar(t[:-1],sfh_edge,alpha=0.25,width=dt,color='k',align='edge',label='EDGE')
     ax1b.axvline(tre,color='k',linestyle='--')
 
 
@@ -242,8 +252,10 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
         ax2.plot(t,mstar,'C0',label='DarkLight')
         ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
 
-    ax2.plot(t_edge,mstar_edge,color='k',label='EDGE')
-    ax2.plot(tsfh_edge_raw,mstar_edge_insitu,color='0.7')
+    if fn_vmax==None:
+        ax2.plot(t_edge,mstar_edge,color='k',label='EDGE')
+        ax2.plot(tsfh_edge_raw,mstar_edge_insitu,color='0.7')
+
     ax2.axvline(tre,color='k',linestyle='--')
 
         
@@ -254,19 +266,29 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1b.set_yscale('log')
     ax1b.set_ylim([1e-6,2e-2])
     ax1b.set_xlim([0,14])
-    ax1b.set_ylabel(r'SFH (M$_\odot$/yr)')
+    ax1b.set_ylabel('SFH (M$_\odot$/yr)')
     ax1b.legend(loc='best')
-
+    
     ylims = [5e2,1e7] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
     ax2.set_yscale('log')
     ax2.set_ylim(ylims)
     ax2.set_xlim([0,14])
     ax2.set_xlabel('t (Gyr)') 
-    ax2.set_ylabel(r'M$_*$ (M$_\odot$)')
+    ax2.set_ylabel('M$_*$ (M$_\odot$)')
     ax2.legend(loc='best')
+    
+    if not plot_separately:
+        
+        fig1.tight_layout()
+        plt.savefig(figfn if figfn != None else 'darklight_vs_edge.pdf')
+        print('wrote',figfn)
 
-    fig1.tight_layout()
-    plt.savefig(figfn if figfn != None else 'darklight_vs_edge.pdf')
-    print('wrote',figfn)
+    else:
 
+        plt.figure(1)
+        plt.savefig((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')
+        print((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')
 
+        plt.figure(2)
+        plt.savefig((figfn if figfn != None else 'darklight_vs_edge')+'-mstar.pdf')
+        print((figfn if figfn != None else 'darklight_vs_edge')+'-mstar.pdf')
