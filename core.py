@@ -82,13 +82,17 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         tt = arange(t[-1],t[0],timesteps)
         zz = interp(tt, t[::-1], z[::-1])
     
-    if zre not in zz:  # make sure reionization included in time steps
-        ire = where(zz<=zre)[0][0]
-        tt = concatenate([ tt[:ire], [interp(zre,z,t)], tt[ire:] ])
-        zz = concatenate([ zz[:ire], [zre],             zz[ire:] ])
+    # make sure reionization included in time steps, if halo exists then
+    if zz[-1] < zre and zz[0] > zre:
+        if zre not in zz:
+            ire = where(zz<=zre)[0][0]
+            tt = concatenate([ tt[:ire], [interp(zre,z,t)], tt[ire:] ])
+            zz = concatenate([ zz[:ire], [zre],             zz[ire:] ])
 
     dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
-    vsmooth = smooth(t[::-1],vmax[::-1],tt,sigma=0.5) # smoothed over 500 Myr
+
+    if len(t) > 1:
+        vsmooth = smooth(t[::-1],vmax[::-1],tt,sigma=0.5) # smoothed over 500 Myr
     
 
     ############################################################
@@ -261,7 +265,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                 break
             h = h.previous
         if isRepeat: continue  # found a repeat! skip this halo.
-                
+        
         # went through all fail conditions, now calculate vmax trajectory, SFH --> M*
         if len(t_sub)==1:
             zz_sub,tt_sub,vv_sub = z_sub,t_sub,vmax_sub
