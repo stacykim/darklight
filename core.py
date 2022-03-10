@@ -162,9 +162,7 @@ def sfr_pre(vmax,method='fiducial'):
     elif method == 'tSFzre4'  :  return 10**(7.66*log10(vmax)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
     elif method == 'tSFonly'  :  return 10**(6.95*log10(vmax)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
     elif method == 'maxfilter':  return 10**(5.23*log10(vmax)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
-    else:
-        print('Do not recognize sfr_pre method',method,'.  Aborting...')
-        exit()
+    else:  raise ValueError('Do not recognize sfr_pre method '+method)
 
 
 def sfr_post(vmax,method='schechter'):
@@ -201,8 +199,7 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
     elif binning == '3bins':
         sfrs = array([ sfr_pre(vavg_pre,method=pre_method) if zz > zre else (sfr_post(vmax[-1],method=post_method) if vv > vthres else 0) for vv,zz in zip(vmax,z) ])
     else:
-        print('SFR binning method',binning,'unrecognized!  Aborting...')
-        exit()
+        raise ValueError('SFR binning method '+binning+' unrecognized')
 
     if not scatter: return sfrs
     else:

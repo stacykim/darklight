@@ -32,9 +32,8 @@ def get_shortname(simname):
         elif halonum=='1459' and split[-1][-2:] == '02': shortname += 'mr02'
         elif halonum=='1459' and split[-1][-2:] == '03': shortname += 'mr03'
         elif halonum=='1459' and split[-1][-2:] == '12': shortname += 'mr12'
-        else:
-            print('unsupported simulation',simname,'! Not sure what shortname to give it. Aborting...')
-            exit()
+        else:  raise ValueError('unsupported simulation '+simname+'! Not sure what shortname to give it.')
+
     elif len(split)==2 and simname[-3:] == '_RT':  shortname += 'RT'
 
     if 'DMO' in simname:  shortname += '_dmo'
@@ -62,8 +61,7 @@ def load_tangos_data(simname,machine='astro'):
         tangos_path_chimera  = '/vol/ph/astro_data/shared/etaylor/CHIMERA/'
         tangos_path = tangos_path_chimera if halonum=='383' else tangos_path_edge
     else:
-        print('support for machine',machine,'not implemented!')
-        exit()
+        raise ValueError('support for machine '+machine+' not implemented!')
 
     tangos.core.init_db(tangos_path+'Halo'+halonum+'.db')
     sim = tangos.get_simulation(simname)
@@ -88,15 +86,13 @@ def get_pynbody_path(simname,machine='astro'):
     elif machine == 'dirac':
 
         # need to implement other paths, but this will do for now
-        if not (halonum=='153' or halonum=='261' or halonum=='339'):
-            print('path for',simname,'on dirac not coded in yet >.<')
-            exit()
-
-        return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
+        if halonum=='153' or halonum=='261' or halonum=='339':
+            return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
+        else:
+            return '/scratch/dp101/shared/EDGE/{0}/'.format(simname)
 
     else:
-        print('support for machine',machine,'not implemented!')
-        exit()
+        raise ValueError('support for machine '+machine+' not implemented!')
 
 
 
@@ -111,23 +107,13 @@ def load_pynbody_data(simname,output=-1,machine='astro',verbose=True):
     path = get_pynbody_path(simname,machine=machine)
 
     if not os.path.isdir(path):
-        print('Full hydro particle data does not exist! Aborting...')
-        exit()
+        raise FileNotFoundError('Full hydro particle data does not exist! (looked in '+path+')')
 
     if output == -1:
-        # get all the outputs and grab the highest numbered one
-        snapshots = glob.glob(os.path.join(path,'output_*'))
-        snapshots.sort()
-        simfn = os.path.join(path,snapshots[-1])
-    else:
-        simfn = os.path.join(path,'output_'+str(output).zfill(5))
+        output = get_number_of_snapshots(simname,machine=machine)
 
-    try:  particles = pynbody.load(simfn)
-    except:
-        print('particle data exists but failed to load given output!')
-        print('attempted read of',simfn)
-        exit()
-
+    simfn = os.path.join(path,'output_'+str(output).zfill(5))
+    particles = pynbody.load(simfn)
     if verbose:  print('read',simfn)
     return particles
 
@@ -227,7 +213,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
 
     # plot the vmaxes
-    ylims = [4,36]
+    ylims = [4,50]#[4,36]
     ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
     ax1a.plot(tre*np.ones(2),ylims,'k--')
@@ -269,7 +255,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
     ax1b.legend(loc='best')
     
-    ylims = [5e2,1e7] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
+    ylims = [5e2,1e8]#1e7] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
     ax2.set_yscale('log')
     ax2.set_ylim(ylims)
     ax2.set_xlim([0,14])
