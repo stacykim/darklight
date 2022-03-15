@@ -4,7 +4,6 @@
 from numpy import *
 from numpy.random import normal,random
 import matplotlib as mpl
-mpl.use('PDF')
 import matplotlib.pyplot as plt
 import scipy.ndimage.filters as filters
 

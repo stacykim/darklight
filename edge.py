@@ -18,6 +18,10 @@ def get_shortname(simname):
     split = simname.split('_')
     shortname = split[0][4:]
     halonum = shortname[:]
+
+    hires = 'hires' in split
+    if hires: split.remove('hires')
+
     if len(split) > 2:
 
         # EDGE2 WDMs
@@ -37,6 +41,7 @@ def get_shortname(simname):
     elif len(split)==2 and simname[-3:] == '_RT':  shortname += 'RT'
 
     if 'DMO' in simname:  shortname += '_dmo'
+    if hires:             shortname += '_hires'
 
     return halonum, shortname
 
@@ -57,9 +62,25 @@ def load_tangos_data(simname,machine='astro'):
     halonum, shortname = get_shortname(simname)
 
     if machine=='astro':
-        tangos_path_edge     = '/vol/ph/astro_data/shared/morkney/EDGE/tangos/'
-        tangos_path_chimera  = '/vol/ph/astro_data/shared/etaylor/CHIMERA/'
-        tangos_path = tangos_path_chimera if halonum=='383' else tangos_path_edge
+
+        if halonum=='153' or halonum=='261' or halonum=='339':
+            raise OSError('tangos databases do not yet exist for EDGE2 simulations!')
+        elif halonum=='383':
+            tangos_path = '/vol/ph/astro_data/shared/etaylor/CHIMERA/'
+        else:
+            # need to add support for EDGE1 reruns once databases made.
+            tangos_path = '/vol/ph/astro_data/shared/morkney/EDGE/tangos/'
+
+    elif machine=='dirac':
+
+        if halonum=='153' or halonum=='261' or halonum=='339':
+            tangos_path = 'scratch/dp191/shared/tangos/'
+        elif halonum=='383':
+            raise OSError('tangos databases do not yet exist for CHIMERA simulations!')
+        else:
+            # need to add support for EDGE1 reruns once databases made.
+            tangos_path = '/scratch/dp101/shared/EDGE/tangos/'
+
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
 
@@ -76,9 +97,12 @@ def get_pynbody_path(simname,machine='astro'):
 
     if machine=='astro':
 
-        if halonum=='383':
+        if halonum=='153' or halonum=='261' or halonum=='339':
+            raise OSError('particle data not on astro for EDGE2 simulations!')
+        elif halonum=='383':
             return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
         elif halonum != shortname:
+            # need to add support for EDGE1 reruns, once available
             return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
         else:
             return '/vol/ph/astro_data/shared/morkney/EDGE/{0}/'.format(simname)
@@ -88,6 +112,8 @@ def get_pynbody_path(simname,machine='astro'):
         # need to implement other paths, but this will do for now
         if halonum=='153' or halonum=='261' or halonum=='339':
             return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
+        elif halonum=='383':
+            return '/scratch/dp191/shared/CHIMERA/{0}/'.format(simname)
         else:
             return '/scratch/dp101/shared/EDGE/{0}/'.format(simname)
 
