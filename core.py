@@ -10,9 +10,6 @@ import scipy.ndimage.filters as filters
 from tangos.examples.mergers import *
 from .constants import *
 
-vocc_edges = array([2., 9., 16., 23., 30.])
-vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
-focc = array([0.033, 0.141, 0.250, 1.0])
 
 
 
@@ -25,14 +22,14 @@ def smooth(t,y,tnew,sigma=0.5):
     sigma, and returns the smoothed values at tnew.  Assumes t is in ascending order.
     """
     # smooth vmax rotation curve
-    tgrid = arange(t[0],t[-1],sigma)  # NOTE: interpolated in 500 Myr bins
-    ygrid = interp(tgrid,t,y)
+    tgrid = arange(t[0],t[-1]+sigma,sigma)  # NOTE: interpolated in 500 Myr bins
+    ygrid = interp(tgrid,t,y)#,left=0)
     ysmooth = filters.gaussian_filter1d(ygrid,sigma=1)
-    return interp(tnew,tgrid,ysmooth)    
+    return interp(tnew,tgrid,ysmooth)#,left=0)
 
 
 def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,poccupied=True,fn_vmax=None):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,poccupied='edge1',fn_vmax=None):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
@@ -55,6 +52,16 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     DMO = True if running on a DMO simluation.  Will then multiply particle
         masses by sqrt(1-fbary).
+
+    poccupied = the occupation fraction to assume, if desired.
+    
+        'all' = all halos occupied
+        'edge1' = occupation fraction derived from fiducial EDGE1 simulations
+        'edge1rt' = occupation fraction from EDGE1 simulations with radiative 
+            transfer; this is significantly higher than 'edge1'
+        'nadler18' = from Nadler+ 2018's fit to the MW dwarfs. Note that this
+            was parameterized in M200c, but we have made some simplifying 
+            assumptions to convert it to vmax.
     """
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
@@ -64,11 +71,11 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
-        #z = halo.calculate_for_progenitors('z()')[0]
-        #t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
-        #t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
-        t,z,vmax = loadtxt(fn_vmax,unpack=True)
-        t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
+        z = halo.calculate_for_progenitors('z()')[0]
+        t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
+        t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        #t,z,vmax = loadtxt(fn_vmax,unpack=True)
+        #t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
 
     
     ############################################################
@@ -148,6 +155,30 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zz)) ])
             
         return tt,zz,vsmooth,sfh_stats,mstar_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+
+
+
+##################################################
+# OCCUPATION FRACTION
+
+def occupation_fraction(vmax,method='edge1'):
+
+    if method=='all':
+        return 1.
+    elif method=='edge1':
+        vocc_edges = array([2., 9., 16., 23., 30.])
+        vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
+        focc = array([0.033, 0.141, 0.250, 1.0])
+        return np.interp(vmax, vocc, focc)
+    elif method=='edge1rt':
+        vocc_edges = array([2., 9, 16., 23., 30.])
+        vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
+        focc = array([0.484, 0.591, 0.581, 1.0])
+        return np.interp(vmax, vocc, focc)
+    elif method=='nadler18':
+        raise ValueError('occupation fraction method nadler18 not yet implemented!')
+    else:
+        raise ValueError('occupation fraction method '+method+' not recognized')
 
 
 
@@ -267,7 +298,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
             zz_sub,tt_sub,vv_sub = z_sub,t_sub,vmax_sub
         elif timesteps == 'sim':
             # smooth with 500 myr timestep
-            tv = arange(t[-1],t[0],0.5)
+            tv = arange(t_sub[-1],t_sub[0],0.5)
             vi = interp(tv,t_sub[::-1],vmax_sub[::-1])
             fv = filters.gaussian_filter(vi,sigma=1)
             if z_sub[-1] > zre:
@@ -307,9 +338,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
         else:
             dt_sub = tt_sub[1:]-tt_sub[:-1] # len(dt_sub) = len(tt_sub)-1
         
-
-        if poccupied==True: # and zz_sub[-1]>=4:
-            pocc = interp(vv_sub[-1], vocc, focc)
+        pocc = occupation_fraction(vv_sub[-1],method=poccupied) # and zz_sub[-1]>=4:  #interp(vv_sub[-1], vocc, focc)
 
 
         ############################################################
@@ -317,7 +346,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
             
         if nscatter == 0:
 
-            if poccupied==True and random() > pocc: # and zz_sub[-1]>=4:
+            if random() > pocc: # and zz_sub[-1]>=4:
                 msmerge[im] = 0
             else:
                 sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,pre_method=pre_method,post_method=post_method,scatter=False)
@@ -329,7 +358,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
 
             for iis in range(nscatter):
 
-                if poccupied==True and random() > pocc: # and zz_sub[-1]>=4:
+                if random() > pocc: # and zz_sub[-1]>=4:
                     msmerge[im,iis] = 0
                 else:
                     sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,scatter=True,pre_method=pre_method,post_method=post_method)

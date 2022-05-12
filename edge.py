@@ -8,6 +8,19 @@ import matplotlib.pyplot as plt
 from .constants import *
 
 
+# sim names
+edge1_sims   = [ 'Halo600_fiducial', 'Halo600_fiducial_later_mergers',
+               'Halo605_fiducial',
+               'Halo624_fiducial', 'Halo624_fiducial_higher_finalmass',
+               'Halo1445_fiducial',
+               'Halo1459_fiducial', 'Halo1459_fiducial_Mreionx02', 'Halo1459_fiducial_Mreionx03', 'Halo1459_fiducial_Mreionx12'
+             ]
+edge1rt_sims = ['Halo600_RT', 'Halo605_RT', 'Halo624_RT', 'Halo1445_RT', 'Halo1459_RT']
+chimera_sims   = ['Halo383_fiducial', 'Halo383_fiducial_late']
+
+all_sims = edge1_sims + chimera_sims + edge1rt_sims
+
+
 
 def get_shortname(simname):
     """
