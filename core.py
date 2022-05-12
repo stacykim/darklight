@@ -149,12 +149,8 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         sfh_binned = array(sfh_binned)
         mstar_binned = array(mstar_binned)
         mstar_binned_tot = array(mstar_binned_tot)
-
-        sfh_stats       = array([ percentile(sfh_binned      [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
-        mstar_stats     = array([ percentile(mstar_binned    [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(tt)) ])
-        mstar_tot_stats = array([ percentile(mstar_binned_tot[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(zz)) ])
             
-        return tt,zz,vsmooth,sfh_stats,mstar_stats,mstar_tot_stats if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned_tot if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
 
 
 

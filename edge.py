@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib as mpl
 mpl.rcParams.update({'font.size': 17})
 mpl.rcParams.update({'font.family': 'serif'})
-#mpl.rcParams.update({'text.usetex': True})
+mpl.rcParams.update({'text.usetex': True})
 import matplotlib.pyplot as plt
 from .constants import *
 
@@ -177,6 +177,11 @@ def rebin_sfh(t_new, t_old, sfh_old):
     indicies = np.digitize(t_new, t_old)  # gives i s.t. bins[i-1] <= x < bins[i]
     sfh_new = np.zeros(len(t_new)-1)
     for i in range(len(t_new)-1):
+
+        if t_old[-1] < t_new[i]:
+            sfh_new[i:] = np.zeros(len(sfh_new[i:]))
+            break
+
         #print('\non t_new element',i)
         #print('t_new',t_new[i],'to',t_new[i+1])
         iold0 = indicies[i  ]
@@ -208,7 +213,7 @@ def rebin_sfh(t_new, t_old, sfh_old):
     return sfh_new
     
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -217,6 +222,11 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     tre = np.interp(zre,z[::-1],t[::-1])  # time of reionization, Gyr
 
     plot_scatter = False if mstar.ndim==1 else True
+
+    if plot_scatter:
+        sfh_stats          = np.array([ np.percentile(sfh_insitu  [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
+        mstar_insitu_stats = np.array([ np.percentile(mstar_insitu[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
+        mstar_stats        = np.array([ np.percentile(mstar       [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
     
     # plotting preliminaries
     if not plot_separately:
@@ -252,7 +262,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
 
     # plot the vmaxes
-    ylims = [4,50]#[4,36]
+    ylims = [4,36]#[4,50]
     ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
     ax1a.plot(tre*np.ones(2),ylims,'k--')
@@ -260,7 +270,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     # plot the SFHs
     dt = t[1:] - t[:-1]
     if plot_scatter:
-        ax1b.bar(t[:-1],sfh_insitu[:-1,1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
+        ax1b.bar(t[:-1],sfh_stats[:-1,1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
     else:
         ax1b.bar(t[:-1],sfh_insitu[:-1],alpha=0.25,width=dt,color='C0',align='edge',label='DarkLight')
     if fn_vmax==None:  ax1b.bar(t[:-1],sfh_edge,alpha=0.25,width=dt,color='k',align='edge',label='EDGE')
@@ -269,10 +279,10 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     # plot the mstar trajectories
     if plot_scatter:
-        ax2.fill_between(t,mstar[:,0],mstar[:,2],color='C0',alpha=0.2)
-        ax2.fill_between(t,mstar[:,3],mstar[:,4],color='C0',alpha=0.1)
-        ax2.plot(t,mstar[:,1],'C0',label='DarkLight')
-        ax2.plot(t,mstar_insitu[:,1],'C0',alpha=0.3)
+        ax2.fill_between(t,mstar_stats[:,0],mstar_stats[:,2],color='C0',alpha=0.2)
+        ax2.fill_between(t,mstar_stats[:,3],mstar_stats[:,4],color='C0',alpha=0.1)
+        ax2.plot(t,mstar_stats[:,1],'C0',label='DarkLight')
+        ax2.plot(t,mstar_insitu_stats[:,1],'C0',alpha=0.3)
     else:
         ax2.plot(t,mstar,'C0',label='DarkLight')
         ax2.plot(t,mstar_insitu,'C0',alpha=0.3)
@@ -292,15 +302,15 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1b.set_ylim([1e-6,2e-2])
     ax1b.set_xlim([0,14])
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
-    ax1b.legend(loc='best')
+    if legend: ax1b.legend(loc='best')
     
-    ylims = [5e2,1e8]#1e7] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
+    ylims = [5e2,1e7]#1e8] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
     ax2.set_yscale('log')
     ax2.set_ylim(ylims)
     ax2.set_xlim([0,14])
     ax2.set_xlabel('t (Gyr)') 
     ax2.set_ylabel('M$_*$ (M$_\odot$)')
-    ax2.legend(loc='best')
+    if legend: ax2.legend(loc='best')
     
     if not plot_separately:
         
