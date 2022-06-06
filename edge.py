@@ -27,6 +27,8 @@ def get_shortname(simname):
     Returns the halo number and a shortened version of the simulation name,
     e.g. giving 'Halo600_fiducial_later_mergers' returns '600' and '600lm'.
     """
+
+    if simname=='void_volume':  return 'ALL','void'
     
     split = simname.split('_')
     shortname = split[0][4:]
@@ -97,7 +99,15 @@ def load_tangos_data(simname,machine='astro'):
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
 
-    tangos.core.init_db(tangos_path+'Halo'+halonum+'.db')
+    print('looking for database at',tangos_path+('void.db' if simname=='void_volume' else 'Halo'+halonum+'.db'))
+    
+
+    # get the data
+    if simname=='void_volume':
+        tangos.core.init_db(tangos_path+'void.db')
+    else:
+        tangos.core.init_db(tangos_path+'Halo'+halonum+'.db')
+
     sim = tangos.get_simulation(simname)
 
     return sim
@@ -114,7 +124,7 @@ def get_pynbody_path(simname,machine='astro'):
             raise OSError('particle data not on astro for EDGE2 simulations!')
         elif halonum=='383':
             return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
-        elif halonum != shortname:
+        elif halonum != shortname and 'hires' not in shortname:
             # need to add support for EDGE1 reruns, once available
             return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
         else:
