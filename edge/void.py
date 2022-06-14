@@ -1,6 +1,6 @@
 import numpy as np
 
-def remove_duplicates(timestep):
+def get_haloIDs_of_duplicates(timestep):
 
     # root out false halos that have same progenitor as another
     m200c, ih0,ih1,ih2,ih3, contamination = timestep.calculate_all('M200c','halo_number()','earlier(1).halo_number()','earlier(2).halo_number()','earlier(3).halo_number()','contamination_fraction')

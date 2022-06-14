@@ -1,6 +1,6 @@
 import os, glob
 import numpy as np
-from .constants import *
+from ..constants import *
 
 
 # sim names
