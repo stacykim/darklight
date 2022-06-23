@@ -69,6 +69,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     if fn_vmax==None:
         t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
+        if len(t)==0: return np.array([[]]**6)
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
         z = halo.calculate_for_progenitors('z()')[0]
@@ -99,7 +100,8 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     if len(t) > 1:
         vsmooth = smooth(t[::-1],vmax[::-1],tt,sigma=0.5) # smoothed over 500 Myr
-    
+    else:
+        vsmooth = vmax
 
     ############################################################
     # Generate the star formation histories
@@ -182,12 +184,18 @@ def occupation_fraction(vmax,method='edge1'):
 # SFH ROUTINES
 
 def sfr_pre(vmax,method='fiducial'):
-    if vmax > 20: vmax = 20.
-    if   method == 'fiducial' :  return 2e-7*(vmax/5)**3.75 * exp(vmax/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
-    elif method == 'smalls'   :  return 1e-7*(vmax/5)**4 * exp(vmax/5)     # with turn over at small vmax, fit by eye
-    elif method == 'tSFzre4'  :  return 10**(7.66*log10(vmax)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
-    elif method == 'tSFonly'  :  return 10**(6.95*log10(vmax)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
-    elif method == 'maxfilter':  return 10**(5.23*log10(vmax)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
+
+    if not hasattr(vmax,'__iter__'):
+        v = vmax if vmax<=20 else 20
+    else:
+        v = vmax[:]
+        v[ v>20 ] = 20.
+        
+    if   method == 'fiducial' :  return 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
+    elif method == 'smalls'   :  return 1e-7*(v/5)**4 * exp(v/5)     # with turn over at small vmax, fit by eye
+    elif method == 'tSFzre4'  :  return 10**(7.66*log10(v)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
+    elif method == 'tSFonly'  :  return 10**(6.95*log10(v)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
+    elif method == 'maxfilter':  return 10**(5.23*log10(v)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
     else:  raise ValueError('Do not recognize sfr_pre method '+method)
 
 

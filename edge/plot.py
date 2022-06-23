@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True, sfh_lim=None, vmax_lim=None):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -55,7 +55,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
 
     # plot the vmaxes
-    ylims = [4,36]#[4,50]
+    ylims = [4,36] if vmax_lim==None else vmax_lim #[4,50]
     ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
     ax1a.plot(tre*np.ones(2),ylims,'k--')
@@ -92,7 +92,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1a.set_ylabel(r'v$_{\rm max}$ (km/s)')
 
     ax1b.set_yscale('log')
-    ax1b.set_ylim([1e-6,2e-2])
+    ax1b.set_ylim([1e-6,2e-2] if sfh_lim==None else sfh_lim)
     ax1b.set_xlim([0,14])
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
     if legend: ax1b.legend(loc='best')
