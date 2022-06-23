@@ -69,7 +69,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     if fn_vmax==None:
         t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-        if len(t)==0: return np.array([[]]**6)
+        if len(t)==0: return np.array([[]]*6)
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
         z = halo.calculate_for_progenitors('z()')[0]
