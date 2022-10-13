@@ -119,7 +119,7 @@ def get_pynbody_path(simname,machine='astro'):
             raise OSError('particle data not on astro for EDGE2 simulations!')
         elif halonum=='383':
             return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
-        elif halonum != shortname and 'hires' not in shortname:
+        elif halonum != shortname and 'hires' not in shortname and 'RT' not in simname:
             # need to add support for EDGE1 reruns, once available
             return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
         else:
