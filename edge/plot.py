@@ -9,7 +9,7 @@ from .utils import *
 from ..constants import *
 
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True, sfh_lim=None, vmax_lim=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True, sfh_lim=None, vmax_lim=None, mstar_lim=None):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -100,9 +100,8 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
     if legend: ax1b.legend(loc='best')
     
-    ylims = [5e2,1e7]#1e8] # ax2.get_ylim() if not PLOT_MULTICOL else [5e2,1e7]
     ax2.set_yscale('log')
-    ax2.set_ylim(ylims)
+    ax2.set_ylim([5e2,1e7] if mstar_lim==None else mstar_lim)
     ax2.set_xlim([0,14])
     ax2.set_xlabel('t (Gyr)') 
     ax2.set_ylabel('M$_*$ (M$_\odot$)')
