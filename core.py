@@ -10,7 +10,7 @@ import scipy.ndimage.filters as filters
 from tangos.examples.mergers import *
 from .constants import *
 
-
+from . import DATA_DIR
 
 
 ##################################################
@@ -159,22 +159,45 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 ##################################################
 # OCCUPATION FRACTION
 
+# data for EDGE occupation fraction
+vocc_bin_edges = array([2., 9., 16., 23., 30.])
+vocc_edge    = sqrt(vocc_bin_edges[1:]*vocc_bin_edges[:-1])
+focc_edge1   = array([0.033, 0.141, 0.250, 1.0])
+focc_edge1rt = array([0.484, 0.591, 0.581, 1.0])
+
+# data for Nadler+ 2018's occupation fraction
+from colossus.halo.concentration import concentration
+from colossus.halo.mass_defs import changeMassDefinition
+from colossus.cosmology import cosmology
+from colossus.utils.constants import G
+cosmo = cosmology.setCosmology('planck18')  # can set different cosmology here
+h0    = cosmo.Hz(0)/100 # normalized hubble constant, z=0
+z=0
+
+log10mvir, focc = np.loadtxt(DATA_DIR+'nadler2020-pocc.dat',unpack=True)
+mvir = 10**log10mvir
+cvir = concentration(mvir, 'vir', z, model='diemer19')
+m200_div_h, r200_div_h, c200 = changeMassDefinition(mvir/h0, cvir, z, 'vir', '200c', profile='nfw')
+m200,r200 = m200_div_h * h0, r200_div_h * h0
+rs = r200/c200
+xmax = 2.16258
+rmax = xmax*rs
+def fNFW(x):   return np.log(1+x) - x/(1+x)  # x = r/rs
+vmax = np.sqrt(G*m200*fNFW(xmax)/fNFW(c200)/rmax)
+vocc_nadler = np.concatenate([[2], vmax, [30]])
+focc_nadler = np.concatenate([[0], focc, [ 1]])
+
+
 def occupation_fraction(vmax,method='edge1'):
 
     if method=='all':
         return 1.
     elif method=='edge1':
-        vocc_edges = array([2., 9., 16., 23., 30.])
-        vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
-        focc = array([0.033, 0.141, 0.250, 1.0])
-        return np.interp(vmax, vocc, focc)
+        return np.interp(vmax, vocc_edge, focc_edge1)
     elif method=='edge1rt':
-        vocc_edges = array([2., 9, 16., 23., 30.])
-        vocc = sqrt(vocc_edges[1:]*vocc_edges[:-1])
-        focc = array([0.484, 0.591, 0.581, 1.0])
-        return np.interp(vmax, vocc, focc)
-    elif method=='nadler18':
-        raise ValueError('occupation fraction method nadler18 not yet implemented!')
+        return np.interp(vmax, vocc_edge, focc_edge1rt)
+    elif method=='nadler20':
+        return np.interp(vmax, vocc_nadler, focc_nadler)
     else:
         raise ValueError('occupation fraction method '+method+' not recognized')
 
