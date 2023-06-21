@@ -59,7 +59,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         'edge1' = occupation fraction derived from fiducial EDGE1 simulations
         'edge1rt' = occupation fraction from EDGE1 simulations with radiative 
             transfer; this is significantly higher than 'edge1'
-        'nadler18' = from Nadler+ 2018's fit to the MW dwarfs. Note that this
+        'nadler20' = from Nadler+ 2020's fit to the MW dwarfs. Note that this
             was parameterized in M200c, but we have made some simplifying 
             assumptions to convert it to vmax.
     """
@@ -228,6 +228,17 @@ def sfr_post(vmax,method='schechter'):
     elif method == 'linear'     :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
 
 
+def sfr_scatter(z, vmax, zre=4., pre_method='fiducial',post_method='schechter'):
+    """
+    z and vmax must be arrays of the same length.
+    """
+
+    if post_method=='schechterMW':  # increasing scatter for small vmax post-reionization
+        return array([ 10**normal(0,0.4 if zz > zre else -0.631*log10(vv)+1.65) for zz,vv in zip(z,vmax) ])
+    else:
+        return array([ 10**normal(0,0.4 if zz > zre else 0.3) for zz in z ])
+    
+    
 def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',scatter=False):
     """
     Assumes we are given a halo's entire vmax trajectory.
@@ -260,7 +271,8 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
 
     if not scatter: return sfrs
     else:
-        return array([ sfr * 10**normal(0,0.4 if zz > zre else 0.3) for sfr,zz in zip(sfrs,z) ])
+        #return array([ sfr * 10**normal(0,0.4 if zz > zre else 0.3) for sfr,zz in zip(sfrs,z) ])
+        return sfr * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_method)
 
 
     
