@@ -273,7 +273,7 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
     if not scatter: return sfrs
     else:
         #return array([ sfr * 10**normal(0,0.4 if zz > zre else 0.3) for sfr,zz in zip(sfrs,z) ])
-        return sfr * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_method)
+        return sfrs * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_method)
 
 
     
