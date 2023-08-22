@@ -223,9 +223,10 @@ def sfr_pre(vmax,method='fiducial'):
 
 
 def sfr_post(vmax,method='schechter'):
-    if   method == 'schechter'  :  return 7.06 * (vmax/182.4)**3.07 * exp(-182.4/vmax)  # schechter fxn fit
-    if   method == 'schechterMW':  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
-    elif method == 'linear'     :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
+    if   method == 'schechter'    :  return 7.06 * (vmax/182.4)**3.07 * exp(-182.4/vmax)  # schechter fxn fit
+    if   method == 'schechter_mid':  return 0.4 * (vmax/100.)**3.71 * np.exp(-100./vmax)  # schechter fxn b/t fiducial and MW
+    if   method == 'schechterMW'  :  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
+    elif method == 'linear'       :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
 
 
 def sfr_scatter(z, vmax, zre=4., pre_method='fiducial',post_method='schechter'):
