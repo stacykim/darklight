@@ -224,8 +224,9 @@ def sfr_pre(vmax,method='fiducial'):
 
 def sfr_post(vmax,method='schechter'):
     if   method == 'schechter'    :  return 7.06 * (vmax/182.4)**3.07 * exp(-182.4/vmax)  # schechter fxn fit
-    if   method == 'schechter_mid':  return 0.4 * (vmax/100.)**3.71 * np.exp(-100./vmax)  # schechter fxn b/t fiducial and MW
-    if   method == 'schechterMW'  :  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
+    elif method == 'schechter_mc' :  return 0.22 * (vmax/85.)**3.71 * np.exp(-85./vmax)   # schechter b/t fiducial and mid
+    elif method == 'schechter_mid':  return 0.4 * (vmax/100.)**3.71 * np.exp(-100./vmax)  # schechter fxn b/t fiducial and MW
+    elif method == 'schechterMW'  :  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
     elif method == 'linear'       :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
 
 
@@ -235,7 +236,8 @@ def sfr_scatter(z, vmax, zre=4., pre_method='fiducial',post_method='schechter'):
     """
 
     if post_method=='schechterMW':  # increasing scatter for small vmax post-reionization
-        return array([ 10**normal(0,0.4 if zz > zre else -0.631*log10(vv)+1.65) for zz,vv in zip(z,vmax) ])
+        #return array([ 10**normal(0,0.4 if zz > zre else -0.631*log10(vv)+1.65) for zz,vv in zip(z,vmax) ])
+        return array([ 10**normal(0,0.4 if zz > zre else -0.651*log10(vv)+1.74) for zz,vv in zip(z,vmax) ])
     else:
         return array([ 10**normal(0,0.4 if zz > zre else 0.3) for zz in z ])
     
