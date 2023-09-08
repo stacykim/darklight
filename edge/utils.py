@@ -11,13 +11,22 @@ edge1_sims   = [ 'Halo600_fiducial', 'Halo600_fiducial_later_mergers',
                'Halo1459_fiducial', 'Halo1459_fiducial_Mreionx02', 'Halo1459_fiducial_Mreionx03', 'Halo1459_fiducial_Mreionx12'
              ]
 edge1rt_sims = ['Halo600_RT', 'Halo605_RT', 'Halo624_RT', 'Halo1445_RT', 'Halo1459_RT']
-chimera_sims   = ['Halo383_fiducial', 'Halo383_fiducial_late']
+chimera_sims   = ['Halo383_fiducial', 'Halo383_fiducial_288', 'Halo383_fiducial_early', 'Halo383_fiducial_late', 'Halo383_Massive']
 
-all_sims = edge1_sims + chimera_sims + edge1rt_sims
+edge2rerun_sims = ['Halo1459_RT', 'Halo1459_Mreionx02_RT', 'Halo1459_Mreionx03_RT',
+                   'Halo1459_Mreionx03_RT_hires',
+                   'Halo1445_RT', 'Halo605_RT', 'Halo624_RT',
+                   'Halo383_RT', 'Halo383_stochastic_RT', 'Halo383_early_RT', 'Halo383_late_RT', 'Halo383_Massive_RT']
+edge2_sims = ['Halo153_RT', 'Halo153_early_RT', 'Halo153_late_RT',
+              'Halo261_RT', 'Halo261_EARLY_DECON_RT', 'Halo261_LATE_DECON_RT',
+              'Halo339_RT'] #, 'Halo339_early_RT', 'Halo339_late_RT']
+
+all_edge1_sims = edge1_sims + chimera_sims + edge1rt_sims
+all_edge2_sims = edge2_sims + edge2rerun_sims
 
 
 
-def get_shortname(simname):
+def get_shortname(simname, physics='edge1'):
     """
     Returns the halo number and a shortened version of the simulation name,
     e.g. giving 'Halo600_fiducial_later_mergers' returns '600' and '600lm'.
@@ -37,6 +46,9 @@ def get_shortname(simname):
         # EDGE2 WDMs
         if 'wdm' in simname:
             shortname += 'w'+simname.split('wdm')[1][0]
+        if physics=='edge2':
+            if 'early' in simname.lower():  shortname += 'e'
+            elif 'late' in simname.lower(): shortname += 'l'
 
         # EDGE1
         elif halonum=='332': shortname += 'low'
@@ -57,19 +69,22 @@ def get_shortname(simname):
 
 
 
-def get_number_of_snapshots(simname,machine='astro'):
+def get_number_of_snapshots(simname,machine='astro',physics='edge1'):
     
-    path = get_pynbody_path(simname,machine=machine)
-    snapshots = glob.glob(os.path.join(path,'output_*'))
+    path = get_pynbody_path(simname,machine=machine,physics=physics)
+    snapshots = glob.glob(os.path.join(path,'output_?????'))
     return len(snapshots)
 
 
 
-def load_tangos_data(simname,machine='astro'):
+def load_tangos_data(simname,machine='astro',physics='edge1',verbose=True):
+ 
+    if physics=='edge2':  raise ValueError('no tangos databases available yet for EDGE2 suite!')
+
 
     import tangos
-    
-    halonum, shortname = get_shortname(simname)
+   
+    halonum, shortname = get_shortname(simname,physics=physics)
 
     if machine=='astro':
 
@@ -83,10 +98,10 @@ def load_tangos_data(simname,machine='astro'):
 
     elif machine=='dirac':
 
-        if halonum=='153' or halonum=='261' or halonum=='339':
-            tangos_path = 'scratch/dp191/shared/tangos/'
-        elif halonum=='383':
-            raise OSError('tangos databases do not yet exist for CHIMERA simulations!')
+        if halonum=='383':
+            tangos_path = '/scratch/dp101/shared/EDGE/tangos/'
+        elif halonum=='153' or halonum=='261' or halonum=='339':
+            tangos_path = '/scratch/dp191/shared/tangos/'
         else:
             # need to add support for EDGE1 reruns once databases made.
             tangos_path = '/scratch/dp101/shared/EDGE/tangos/'
@@ -94,7 +109,7 @@ def load_tangos_data(simname,machine='astro'):
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
 
-    print('looking for database at',tangos_path+('void.db' if simname=='void_volume' else 'Halo'+halonum+'.db'))
+    if verbose: print('looking for database at',tangos_path+('void.db' if simname=='void_volume' else 'Halo'+halonum+'.db'))
     
 
     # get the data
@@ -109,52 +124,75 @@ def load_tangos_data(simname,machine='astro'):
 
 
 
-def get_pynbody_path(simname,machine='astro'):
+def get_pynbody_path(simname,machine='astro',physics='edge1'):
 
-    halonum, shortname = get_shortname(simname)
+    """
+    physics = 'edge1' or 'edge2'
+    """
+
+    if physics=='edge1' and simname not in all_edge1_sims:  raise ValueError(simname+' not in EDGE1 suite!')
+    if physics=='edge2' and simname not in all_edge2_sims:  raise ValueError(simname+' not in EDGE2 suite!')
+
+
+    halonum, shortname = get_shortname(simname, physics=physics)
 
     if machine=='astro':
 
-        if halonum=='153' or halonum=='261' or halonum=='339':
-            raise OSError('particle data not on astro for EDGE2 simulations!')
-        elif halonum=='383':
-            return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
-        elif halonum != 'ALL' and halonum != shortname and 'hires' not in shortname and 'RT' not in simname:
-            # need to add support for EDGE1 reruns, once available
-            return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
-        else:
-            return '/vol/ph/astro_data/shared/morkney/EDGE/{0}/'.format(simname)
+        if physics=='edge1':
+
+            if halonum=='383':
+                return '/vol/ph/astro_data/shared/etaylor/CHIMERA/{0}/'.format(simname)
+            elif halonum != 'ALL' and halonum != shortname and 'hires' not in shortname and 'RT' not in simname:
+                return '/vol/ph/astro_data2/shared/morkney/EDGE_GM/{0}/'.format(simname)
+            else:
+                return '/vol/ph/astro_data/shared/morkney/EDGE/{0}/'.format(simname)
+
+        elif physics=='edge2':
+            raise OSError('particle data not yet available on astro servers for EDGE2 simulations!')
+
 
     elif machine == 'dirac':
 
-        # need to implement other paths, but this will do for now
-        if halonum=='153' or halonum=='261' or halonum=='339':
-            return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
-        elif halonum=='383':
-            return '/scratch/dp191/shared/CHIMERA/{0}/'.format(simname)
-        else:
-            return '/scratch/dp101/shared/EDGE/{0}/'.format(simname)
+        if physics == 'edge1':
+
+            if halonum=='383':
+                return '/scratch/dp191/shared/CHIMERA/{0}/'.format(simname)
+            else:
+                return '/scratch/dp101/shared/EDGE/{0}/'.format(simname)
+
+        elif physics=='edge2':
+
+            if halonum=='153' or halonum=='261' or halonum=='339':
+                return '/scratch/dp191/shared/EDGE2_simulations/{0}/'.format(simname)
+            else:
+                return '/scratch/dp191/shared/RT_rerun_simulations/{0}/'.format(simname)
+
 
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
 
 
 
-def load_pynbody_data(simname,output=-1,machine='astro',verbose=True):
+def load_pynbody_data(simname,output=-1,machine='astro',verbose=True,physics='edge1'):
     """
     Returns the particle data for the given simulation and output number.
     By default, returns the z=0 output, which is specified via '-1'.
+        suite = 'edge1' or 'edge2'  # the physics the sims were run with
     """
-    
+
+    if physics=='edge1' and simname not in all_edge1_sims:  raise ValueError(simname+' not in EDGE1 suite!')
+    if physics=='edge2' and simname not in all_edge2_sims:  raise ValueError(simname+' not in EDGE2 suite!')
+
+
     import pynbody
     
-    path = get_pynbody_path(simname,machine=machine)
+    path = get_pynbody_path(simname,machine=machine,physics=physics)
 
     if not os.path.isdir(path):
         raise FileNotFoundError('Full hydro particle data does not exist! (looked in '+path+')')
 
     if output == -1:
-        output = get_number_of_snapshots(simname,machine=machine)
+        output = get_number_of_snapshots(simname,machine=machine,physics=physics)
 
     simfn = os.path.join(path,'output_'+str(output).zfill(5))
     particles = pynbody.load(simfn)
