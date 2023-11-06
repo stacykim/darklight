@@ -112,7 +112,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
             sfh_binned = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=False,pre_method=pre_method,post_method=post_method)
             mstar_binned = array([0] + [ sum(sfh_binned[:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
-            if mergers == False:  return tt,zz,vsmooth,sfh_binned,mstar_binned,zeros(len(mstar_binned))
+            if mergers == False:  return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned
 
         else:
             mstar_binned = zeros(len(tt))
@@ -152,7 +152,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_binned = array(mstar_binned)
         mstar_binned_tot = array(mstar_binned_tot)
             
-        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned_tot if mergers==True else mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned_tot if mergers==True else mstar_binned #mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
 
 
 
@@ -213,8 +213,9 @@ def sfr_pre(vmax,method='fiducial'):
     else:
         v = vmax[:]
         v[ v>20 ] = 20.
-        
-    if   method == 'fiducial' :  return 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
+
+    if   method == 'fiducial_powerlaw': return 10**(6.78*log10(v)-11.6)  # no turn over, simple log-linear fit to dataset below
+    elif method == 'fiducial' :  return 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
     elif method == 'smalls'   :  return 1e-7*(v/5)**4 * exp(v/5)     # with turn over at small vmax, fit by eye
     elif method == 'tSFzre4'  :  return 10**(7.66*log10(v)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
     elif method == 'tSFonly'  :  return 10**(6.95*log10(v)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
@@ -230,14 +231,25 @@ def sfr_post(vmax,method='schechter'):
     elif method == 'linear'       :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
 
 
-def sfr_scatter(z, vmax, zre=4., pre_method='fiducial',post_method='schechter'):
+def sfr_scatter(z, vmax, zre=4.,method='increasing'):
     """
+    Returns scatter in the SFR-vmax relation.  Assumes 0.4 dex lognormal scatter
+    before reionization.  Post-reionization scatter is determined by given method.
+
     z and vmax must be arrays of the same length.
+
+    Notes on Inputs:
+
+    method = type of relation to adopt after reionization
+
+        'increasing' = scatter increases for smaller halos (lower vmax)
+        'flat'       = 0.3 dex lognormal scatter (independent of mass)
     """
 
-    if post_method=='schechterMW':  # increasing scatter for small vmax post-reionization
-        #return array([ 10**normal(0,0.4 if zz > zre else -0.631*log10(vv)+1.65) for zz,vv in zip(z,vmax) ])
-        return array([ 10**normal(0,0.4 if zz > zre else -0.651*log10(vv)+1.74) for zz,vv in zip(z,vmax) ])
+    if method=='increasing':  # increasing scatter for small vmax post-reionization
+        log10scatter = array([ 0.4 if zz > zre else (-0.651*log10(vv)+1.74) for zz,vv in zip(z,vmax) ])
+        log10scatter[ log10scatter < 0.2 ] = 0.2 # max out at 0.2 dex at high-mass end, when extrapolating above fit
+        return np.array([ 10**normal(0,log10s) for log10s in log10scatter ])
     else:
         return array([ 10**normal(0,0.4 if zz > zre else 0.3) for zz in z ])
     
