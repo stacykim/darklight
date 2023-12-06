@@ -94,7 +94,8 @@ def load_tangos_data(simname,machine='astro',physics='edge1',verbose=True):
             tangos_path = '/vol/ph/astro_data/shared/etaylor/CHIMERA/'
         else:
             # need to add support for EDGE1 reruns once databases made.
-            tangos_path = '/vol/ph/astro_data/shared/morkney/EDGE/tangos/'
+            #tangos_path = '/vol/ph/astro_data/shared/morkney/EDGE/tangos/'
+            tangos_path = '/vol/ph/astro_data/shared/etaylor/tangos_updated/'
 
     elif machine=='dirac':
 
