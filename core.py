@@ -29,7 +29,7 @@ def smooth(t,y,tnew,sigma=0.5):
 
 
 def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,poccupied='edge1',fn_vmax=None):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,fn_vmax=None):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
@@ -53,9 +53,13 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     DMO = True if running on a DMO simluation.  Will then multiply particle
         masses by sqrt(1-fbary).
 
-    poccupied = the occupation fraction to assume, if desired.
-    
-        'all' = all halos DarkLight estimates non-zero stellar mass is occupied
+    occupation = how to determine which halos have galaxies, given as a halo mass
+        in solar masses.  Less massive halos do not have galaxies, while more
+        massive ones do.  By default, assumes 2.5e7 msun.  Alternatively, one 
+        can adopt occupation functions from simulations or fits to data.  
+        Supported ones are:
+
+        'all' = all halos DarkLight estimates have non-zero stellar mass is occupied
         'edge1' = occupation fraction derived from fiducial EDGE1 simulations
         'edge1rt' = occupation fraction from EDGE1 simulations with radiative 
             transfer; this is significantly higher than 'edge1'
@@ -109,6 +113,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     else:
         vsmooth = vmax
 
+        
     ############################################################
     # Generate the star formation histories
     
@@ -124,7 +129,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         else:
             mstar_binned = zeros(len(tt))
 
-        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
+        zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
                                                          binning=binning,nscatter=0,pre_method=pre_method,post_method=post_method,
                                                          post_scatter_method=post_scatter_method)
 
@@ -139,7 +144,7 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         mstar_binned_tot = []
 
         if mergers != False:
-            zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,poccupied=poccupied,DMO=DMO,
+            zmerge, qmerge, hmerge, msmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
                                                              binning=binning,nscatter=nscatter,pre_method=pre_method,post_method=post_method,
                                                              post_scatter_method=post_scatter_method)
 
@@ -188,26 +193,29 @@ log10mvir, focc = np.loadtxt(DATA_DIR+'nadler2020-pocc.dat',unpack=True)
 mvir = 10**log10mvir
 cvir = concentration(mvir, 'vir', z, model='diemer19')
 m200_div_h, r200_div_h, c200 = changeMassDefinition(mvir/h0, cvir, z, 'vir', '200c', profile='nfw')
-m200,r200 = m200_div_h * h0, r200_div_h * h0
+m200_nadler,r200 = m200_div_h * h0, r200_div_h * h0
 rs = r200/c200
 xmax = 2.16258
 rmax = xmax*rs
 def fNFW(x):   return np.log(1+x) - x/(1+x)  # x = r/rs
-vmax = np.sqrt(G*m200*fNFW(xmax)/fNFW(c200)/rmax)
+vmax = np.sqrt(G*m200_nadler*fNFW(xmax)/fNFW(c200)/rmax)
 vocc_nadler = np.concatenate([[2], vmax, [30]])
 focc_nadler = np.concatenate([[0], focc, [ 1]])
 
 
-def occupation_fraction(vmax,method='edge1'):
+def occupation_fraction(vmax,m200,method='edge1'):
 
-    if method=='all':
+    if isinstance(method, float):
+        return 1 if m200 > method else 0
+    elif method=='all':
         return 1.
     elif method=='edge1':
         return np.interp(vmax, vocc_edge, focc_edge1)
     elif method=='edge1rt':
         return np.interp(vmax, vocc_edge, focc_edge1rt)
     elif method=='nadler20':
-        return np.interp(vmax, vocc_nadler, focc_nadler)
+        #return np.interp(vmax, vocc_nadler, focc_nadler)
+        return np.interp(m200, m200_nadler, focc, left=0, right=1)
     else:
         raise ValueError('occupation fraction method '+method+' not recognized')
 
@@ -315,9 +323,9 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
 ##################################################
 # ACCRETED STARS
 
-def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, nscatter=0,
+def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False, nscatter=0,
                    pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-                   binning='3bins', timesteps='sim',poccupied=True, DMO=False):
+                   binning='3bins', timesteps='sim',occupation=2.5e7, DMO=False):
     """
     Returns redshift, major/minor mass ratio, halo objects, and stellar mass accreted 
     for each of the given halo's mergers.  Does not compute the stellar contribution
@@ -348,27 +356,31 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
     
     for ii,im in enumerate(range(len(zmerge))):
         
-        for h in hmerge[im][1:]:
+        for hsub in hmerge[im][1:]:
 
-            t_sub,z_sub,rbins_sub,mencDM_sub = h.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
+            t_sub,z_sub,rbins_sub,mencDM_sub = hsub.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
             vmax_sub = array([ max(sqrt(G*mm/rr)) for mm,rr in zip(mencDM_sub,rbins_sub) ]) * (sqrt(1-FBARYON) if DMO else 1)
 
             if len(t_sub)==0:
                 
-                try: h['M200c_stars']
+                try: hsub['M200c_stars']
                 except KeyError:  continue
                 
-                if h['M200c_stars'] != 0:
-                    print('no mass profile data but has stars (',h['M200c_stars'],'msun ) for halo',h)
+                if hsub['M200c_stars'] != 0:
+                    print('no mass profile data but has stars (',hsub['M200c_stars'],'msun ) for halo',hsub)
 
                 continue  # skip if no mass profile data
 
             tre = interp(zre, z_sub, t_sub)
 
+            # get subhalo's mass in case it's needed for occupation fraction below
+            try: m_sub = hsub['M200c']
+            except KeyError: m_sub = 1. # if no halo mass in tangos, then probably very low mass; give arbitrarily low value
 
             # catch when merger tree loops back on itself --> double-counting
             depth = -1
             isRepeat = False
+            h = hsub
             while h != None:
                 depth += 1
                 if h.path not in halos.keys():
@@ -379,7 +391,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                     isRepeat = True
                     break
                 h = h.previous
-            if isRepeat: continue  # found a repeat! skip this halo.
+            if isRepeat: continue  # found a repeat! skip this halo
         
             # went through all fail conditions, now calculate vmax trajectory, SFH --> M*
             if len(t_sub)==1:
@@ -426,7 +438,7 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
             else:
                 dt_sub = tt_sub[1:]-tt_sub[:-1] # len(dt_sub) = len(tt_sub)-1
         
-            pocc = occupation_fraction(vv_sub[-1],method=poccupied) # and zz_sub[-1]>=4:  #interp(vv_sub[-1], vocc, focc)
+            pocc = occupation_fraction(vv_sub[-1],m_sub,method=occupation) # and zz_sub[-1]>=4:  #interp(vv_sub[-1], vocc, focc)
 
 
             ############################################################
@@ -437,12 +449,15 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                 if random() > pocc: # and zz_sub[-1]>=4:
                     msmerge[im] = 0
                 else:
+                    #t,z,v,sfh_binned_sub,mstar_insitu_sub,mstar_tot_sub = DarkLight(hsub,nscatter=0,vthres=vthres,zre=zre,pre_method=pre_method,
+                    #                                                                post_method=post_method,post_scatter_method=post_scatter_method,
+                    #                                                                binning=binning,timesteps=timesteps,DMO=DMO,occupation=occupation)
+                    #msmerge[im] = mstar_tot_sub[-1]
                     sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,
                                          pre_method=pre_method,post_method=post_method,
                                          scatter=False,post_scatter_method=post_scatter_method)
                     mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
                     msmerge[im] = mstar_binned_sub[-1]
-                    #mstar_main = interp(zmerge[im],zz[::-1],mstar_binned[::-1])
 
             else:
 
@@ -451,6 +466,10 @@ def accreted_stars(halo, vthres=26., zre=4., plot_mergers=False, verbose=False, 
                     if random() > pocc: # and zz_sub[-1]>=4:
                         msmerge[im,iis] = 0
                     else:
+                        #t,z,v,sfh_binned_sub,mstar_insitu_sub,mstar_tot_sub = DarkLight(hsub,nscatter=0,vthres=vthres,zre=zre,pre_method=pre_method,
+                        #                                                            post_method=post_method,post_scatter_method=post_scatter_method,
+                        #                                                            binning=binning,timesteps=timesteps,DMO=DMO,occupation=occupation)
+                        #msmerge[im,iis] = mstar_tot_sub[-1]
                         sfh_binned_sub = sfh(tt_sub,dt_sub,zz_sub,vv_sub,vthres=vthres,zre=zre,binning=binning,
                                              pre_method=pre_method,post_method=post_method,
                                              scatter=True,post_scatter_method='increasing')
