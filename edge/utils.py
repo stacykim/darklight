@@ -10,6 +10,8 @@ edge1_sims   = [ 'Halo600_fiducial', 'Halo600_fiducial_later_mergers',
                'Halo1445_fiducial',
                'Halo1459_fiducial', 'Halo1459_fiducial_Mreionx02', 'Halo1459_fiducial_Mreionx03', 'Halo1459_fiducial_Mreionx12'
              ]
+edge1_hires_sims = ['Halo1445_fiducial_hires', 'Halo1459_fiducial_hires', 
+                    'Halo600_fiducial_hires', 'Halo605_fiducial_hires', 'Halo624_fiducial_hires']
 edge1rt_sims = ['Halo600_RT', 'Halo605_RT', 'Halo624_RT', 'Halo1445_RT', 'Halo1459_RT']
 chimera_sims   = ['Halo383_fiducial', 'Halo383_fiducial_288', 'Halo383_fiducial_early', 'Halo383_fiducial_late', 'Halo383_Massive']
 
@@ -21,7 +23,7 @@ edge2_sims = ['Halo153_RT', 'Halo153_early_RT', 'Halo153_late_RT',
               'Halo261_RT', 'Halo261_EARLY_DECON_RT', 'Halo261_LATE_DECON_RT',
               'Halo339_RT'] #, 'Halo339_early_RT', 'Halo339_late_RT']
 
-all_edge1_sims = edge1_sims + chimera_sims + edge1rt_sims
+all_edge1_sims = edge1_sims + edge1_hires_sims + chimera_sims + edge1rt_sims + ['void']
 all_edge2_sims = edge2_sims + edge2rerun_sims
 
 
@@ -110,16 +112,16 @@ def load_tangos_data(simname,machine='astro',physics='edge1',verbose=True):
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
 
-    if verbose: print('looking for database at',tangos_path+('void.db' if simname=='void_volume' else 'Halo'+halonum+'.db'))
+    if verbose: print('looking for database at',tangos_path+('void.db' if simname=='void' else 'Halo'+halonum+'.db'))
     
 
     # get the data
-    if simname=='void_volume':
+    if simname=='void':
         tangos.core.init_db(tangos_path+'void.db')
     else:
         tangos.core.init_db(tangos_path+'Halo'+halonum+'.db')
 
-    sim = tangos.get_simulation(simname)
+    sim = tangos.get_simulation('void_volume' if simname=='void' else simname)
 
     return sim
 
@@ -159,7 +161,7 @@ def get_pynbody_path(simname,machine='astro',physics='edge1'):
             if halonum=='383':
                 return '/scratch/dp191/shared/CHIMERA/{0}/'.format(simname)
             else:
-                return '/scratch/dp101/shared/EDGE/{0}/'.format(simname)
+                return '/scratch/dp101/shared/EDGE/{0}/'.format('void_volume' if simname=='void' else simname)
 
         elif physics=='edge2':
 
@@ -208,7 +210,7 @@ def rebin_sfh(t_new, t_old, sfh_old):
     bin edges for calculating SFH values, so len(t_new) = len(sfh_new) + 1.
     If t_new[-1] > t_old[-1], then assumes SFR = 0 where no SFH exists.
     """
-    assert np.all(t_new[:-1] <= t_new[1:]), 'rebin_sfh: requires elelments of t_new to be in ascending order!'
+    assert np.all(t_new[:-1] <= t_new[1:]), 'rebin_sfh: requires elelments of t_new to be in ascending order!'+str(t_new)
     assert np.all(t_old[:-1] <= t_old[1:]), 'rebin_sfh: requires elelments of t_old to be in ascending order!'
 
     if np.array_equiv(t_new,t_old):

@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib as mpl
-mpl.rcParams.update({'font.size': 17})
-mpl.rcParams.update({'font.family': 'serif'})
-mpl.rcParams.update({'text.usetex': True})
+#mpl.rcParams.update({'font.size': 17})
+#mpl.rcParams.update({'font.family': 'serif'})
+#mpl.rcParams.update({'text.usetex': True})
 import matplotlib.pyplot as plt
 
 from .utils import *
@@ -58,10 +58,11 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
 
     # plot the vmaxes
-    ylims = [4,36] if vmax_lim==None else vmax_lim #[4,50]
     ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
+    ylims = ax1a.get_ylim() if vmax_lim==None else vmax_lim # [4,36]
     ax1a.plot(tre*np.ones(2),ylims,'k--')
+    ax1a.set_ylim(ylims)
 
     # plot the SFHs
     dt = t[1:] - t[:-1]
@@ -95,21 +96,22 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1a.set_ylabel(r'v$_{\rm max}$ (km/s)')
 
     ax1b.set_yscale('log')
-    ax1b.set_ylim([1e-6,2e-2] if sfh_lim==None else sfh_lim)
+    if sfh_lim != None:  ax1b.set_ylim(sfh_lim)  # [1e-6,2e-2]
     ax1b.set_xlim([0,14])
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
-    if legend: ax1b.legend(loc='best')
+    if legend: ax1b.legend(loc='best',frameon=False)
     
     ax2.set_yscale('log')
-    ax2.set_ylim([5e2,1e7] if mstar_lim==None else mstar_lim)
+    if mstar_lim != None:  ax2.set_ylim(mstar_lim)  # [5e2,1e7]
     ax2.set_xlim([0,14])
     ax2.set_xlabel('t (Gyr)') 
     ax2.set_ylabel('M$_*$ (M$_\odot$)')
-    if legend: ax2.legend(loc='best')
+    if legend: ax2.legend(loc='best',frameon=False)
     
     if not plot_separately:
         
-        fig1.tight_layout()
+        try: fig1.tight_layout()
+        except: print('error when tried tight_layout()!')
         plt.savefig(figfn if figfn != None else 'darklight_vs_edge.pdf')
         print('wrote',figfn)
 
