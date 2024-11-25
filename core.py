@@ -29,7 +29,7 @@ def smooth(t,y,tnew,sigma=0.5):
 
 
 def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,fn_vmax=None):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,fn_vmax=None, nsc_ratio=0.7, t_delay=1):
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
@@ -135,7 +135,9 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
         mstar_tot = array([ interp(za,zz[::-1],mstar_binned[::-1]) + sum(msmerge[zmerge>=za])  for za in zz ])
 
-        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_tot
+        nNSC = check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=vthres, zre=zre,  nsc_ratio=nsc_ratio, t_delay=t_delay)   
+
+        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_tot, nNSC
 
     else:
 
@@ -166,8 +168,11 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         sfh_binned = array(sfh_binned)
         mstar_binned = array(mstar_binned)
         mstar_binned_tot = array(mstar_binned_tot)
+
+        nNSC = check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=vthres, zre=zre, nsc_ratio=nsc_ratio, t_delay=t_delay)      
             
-        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned_tot if mergers==True else mstar_binned #mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+        return tt,zz,vsmooth,sfh_binned,mstar_binned,mstar_binned_tot if mergers==True else mstar_binned, nNSC #mstar_stats  # for SFH and mstar, give [-2s,median,+2s]
+
 
 
 
@@ -318,8 +323,48 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
         #return array([ sfr * 10**normal(0,0.4 if zz > zre else 0.3) for sfr,zz in zip(sfrs,z) ])
         return sfrs * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_scatter_method)
 
+#################################################
 
-    
+from astropy.cosmology import Planck15 as cosmo  
+from astropy.cosmology import z_at_value
+import astropy.units as u
+
+def check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=26.3, zre=4., nsc_ratio=0.7, t_delay=1):
+
+    #finding values of all progenitors
+    pro_z, pro_r200c, pro_m200c = halo.calculate_for_progenitors('z()', 'r200c','M200c')
+   
+    #finding major mergers after reionsation + gas buildup delay
+    major_mergers = (np.array(zmerge)< (z_at_value(cosmo.age,cosmo.age(zre).to(u.Gyr)+t_delay*u.Gyr))) & (np.array(qmerge)<1/nsc_ratio)
+
+
+    #finding which progenitor in merger tree corresponds to merger/s
+    pro_z_merge = [np.argmin(np.abs(np.array(pro_z) - z)) for z in zmerge[major_mergers]]
+
+    #dynamical timescale calculation
+    tdyn = [np.sqrt(r**3/G/m) for r,m in zip(pro_r200c[pro_z_merge], pro_m200c[pro_z_merge])]
+ 
+    #Chandraskhar dynamical friction timescale - how long to merge. 2x as takes time to relax after merging.
+    merging_time = [2*(0.216*q**1.3/np.log(1+q) * np.exp(1.9))*t for q,t in zip(qmerge[major_mergers], tdyn)]
+    z_final = [z_at_value(cosmo.age, cosmo.age(z).to(u.Gyr)+t*u.Gyr) for z, t in zip(zmerge[major_mergers], merging_time)]
+
+
+    #ensure theres enough time to form a NSC
+    max_merger_time = [13.8 - mt for mt in merging_time]
+    valid_indices = [True if t < m else False for t,m in zip(merging_time, max_merger_time)]
+    major_mergers[major_mergers]=valid_indices
+
+     #finding when mergers happen so can use vsmooth
+    zz_merge, zz_final = [np.argmin(np.abs(np.array(zz) - z)) for z in zmerge[major_mergers]], [np.argmin(np.abs(np.array(zz) - z)) for z in z_final]
+
+     #record mergers which cause vmax to surpass SF threshold
+    nsc_mergers=[]
+    for k, j in zip(zz_merge, zz_final):
+        if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[k+10]>=vthres:
+            nsc_mergers.append(k)
+            
+    return 1 if len(nsc_mergers)>0 else 0
+
 ##################################################
 # ACCRETED STARS
 
@@ -476,7 +521,8 @@ def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False,
                         mstar_binned_sub = array( [0] + [ sum(sfh_binned_sub[:i+1] * 1e9*dt_sub[:i+1]) for i in range(len(dt_sub)) ] ) # sfh_binned_sub
                         msmerge[im,iis] = mstar_binned_sub[-1]
 
-                    
+
+  
             if plot_mergers and implot < 10:
                 plt.plot(t_sub,vmax_sub,color='C'+str(im),alpha=0.25)
                 plt.plot(tt_sub, vv_sub,color='C'+str(im))
