@@ -83,10 +83,10 @@ def DarkLight(halo,nscatter=0,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
         z = halo.calculate_for_progenitors('z()')[0]
-        t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
-        t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
-        #t,z,vmax = loadtxt(fn_vmax,unpack=True)
-        #t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
+        #t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
+        #t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        t,z,vmax = loadtxt(fn_vmax,unpack=True)
+        t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
 
     
     ############################################################
