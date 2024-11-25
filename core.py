@@ -81,11 +81,14 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         if len(t)==0: return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter)
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
-        #t,z,vmax = loadtxt(fn_vmax,unpack=True)
-        #t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
-        z = halo.calculate_for_progenitors('z()')[0]
-        t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
-        t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
+            z = halo.calculate_for_progenitors('z()')[0]
+            t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
+            t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
+        else:
+            t,z,vmax = loadtxt(fn_vmax,unpack=True)
+            t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
+
     
     ############################################################
     # Get values at points where DarkLight SFH will be calculated
