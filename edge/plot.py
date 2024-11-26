@@ -112,8 +112,10 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
         
         try: fig1.tight_layout()
         except: print('error when tried tight_layout()!')
-        plt.savefig(figfn if figfn != None else 'darklight_vs_edge.pdf')
-        print('wrote',figfn)
+        try: 
+            plt.savefig(figfn if figfn != None else 'darklight_vs_edge.pdf')
+            print('wrote',figfn)
+        except: print('error when tried to savefig, skipping!')
 
     else:
 
