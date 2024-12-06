@@ -1,3 +1,4 @@
+
 # darklight.py
 # created 2020.03.20 by stacy kim
 
@@ -79,8 +80,8 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
 
     if fn_vmax==None:
-        t,z,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile')
-        if len(t)==0: return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+        t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
+        if len(t)==0 or len(m200c)==0 or len(r200c)==0: return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
         vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
     else:
         if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
@@ -139,7 +140,7 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     # compute accreted component
     mstars_accreted = np.zeros((nscatter,len(tt)))
     if mergers and sum(occupied)>0:
-        zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
+        zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation='all',DMO=DMO,
                                                          binning=binning,nscatter=sum(occupied),pre_method=pre_method,post_method=post_method,
                                                          post_scatter_method=post_scatter_method, nsc_ratio=nsc_ratio, t_delay=t_delay)
         mstars_accreted[occupied] = np.array([np.sum(msmerge[zmerge>z],axis=0) for z in zz]).T  # change from mstar for each merger -> cumsum(mstar) for each time
@@ -315,12 +316,15 @@ import astropy.units as u
 
 def check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=26.3, zre=4., nsc_ratio=0.7, t_delay=1):
 
+    if len(zmerge)==0: return 0
+
     #finding values of all progenitors
     pro_z, pro_r200c, pro_m200c = halo.calculate_for_progenitors('z()', 'r200c','M200c')
    
     #finding major mergers after reionsation + gas buildup delay
     major_mergers = (np.array(zmerge)< (z_at_value(cosmo.age,cosmo.age(zre).to(u.Gyr)+t_delay*u.Gyr))) & (np.array(qmerge)<1/nsc_ratio)
 
+    if sum(major_mergers)==0: return 0
 
     #finding which progenitor in merger tree corresponds to merger/s
     pro_z_merge = [np.argmin(np.abs(np.array(pro_z) - z)) for z in zmerge[major_mergers]]
@@ -329,14 +333,16 @@ def check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=26.3, zre=4., nsc_ratio=
     tdyn = [np.sqrt(r**3/G/m) for r,m in zip(pro_r200c[pro_z_merge], pro_m200c[pro_z_merge])]
  
     #Chandraskhar dynamical friction timescale - how long to merge. 2x as takes time to relax after merging.
-    merging_time = [2*(0.216*q**1.3/np.log(1+q) * np.exp(1.9))*t for q,t in zip(qmerge[major_mergers], tdyn)]
-    z_final = [z_at_value(cosmo.age, cosmo.age(z).to(u.Gyr)+t*u.Gyr) for z, t in zip(zmerge[major_mergers], merging_time)]
-
-
+    merging_time = np.array([2*(0.216*q**1.3/np.log(1+q) * np.exp(1.9))*t for q,t in zip(qmerge[major_mergers], tdyn)])
+    
     #ensure theres enough time to form a NSC
     max_merger_time = [13.8 - mt for mt in merging_time]
-    valid_indices = [True if t < m else False for t,m in zip(merging_time, max_merger_time)]
+    valid_indices = np.array([True if t < m else False for t,m in zip((cosmo.age(zmerge[major_mergers]).to(u.Gyr)).value, max_merger_time)])
+    if sum(valid_indices)==0: return 0
     major_mergers[major_mergers]=valid_indices
+    merging_time = merging_time[valid_indices]
+
+    z_final = [z_at_value(cosmo.age, cosmo.age(z).to(u.Gyr)+t*u.Gyr) for z, t in zip(zmerge[major_mergers], merging_time)]
 
      #finding when mergers happen so can use vsmooth
     zz_merge, zz_final = [np.argmin(np.abs(np.array(zz) - z)) for z in zmerge[major_mergers]], [np.argmin(np.abs(np.array(zz) - z)) for z in z_final]
@@ -344,10 +350,10 @@ def check_nsc(qmerge, zmerge, vsmooth, zz, halo, vthres=26.3, zre=4., nsc_ratio=
      #record mergers which cause vmax to surpass SF threshold
     nsc_mergers=[]
     for k, j in zip(zz_merge, zz_final):
-        if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[k+10]>=vthres:
+        if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[j]>=vthres:
             nsc_mergers.append(k)
-            
-    return 1 if len(nsc_mergers)>0 else 0
+            #print('Merger z = ', zz[k], '  [', k,']   Halo:',halo.calculate('halo_number()'))
+    return len(nsc_mergers)
 
 ##################################################
 # ACCRETED STARS
