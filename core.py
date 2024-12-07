@@ -31,7 +31,7 @@ def smooth(t,y,tnew,sigma=0.5):
 
 
 def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,fn_vmax=None, nsc_ratio=0.7, t_delay=1):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation='all',fn_vmax=None, nsc_ratio=0.7, t_delay=1):
 
     """
     Generates a star formation history, which is integrated to obtain the M* for
@@ -78,11 +78,19 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
 
-
+    # compute or read in vmax trajectory
     if fn_vmax==None:
+
         t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
-        if len(t)==0 or len(m200c)==0 or len(r200c)==0: return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
-        vmax = array([ sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t)) ]) * (sqrt(1-FBARYON) if DMO else 1)
+
+        if len(t)==0: 
+            return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+
+        vmax = np.zeros(len(t))
+        for i in range(len(t)):
+            vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
+            vmax[i] = max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
+
     else:
         if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
             z = halo.calculate_for_progenitors('z()')[0]
