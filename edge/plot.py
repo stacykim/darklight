@@ -99,7 +99,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     if sfh_lim != None:  ax1b.set_ylim(sfh_lim)  # [1e-6,2e-2]
     ax1b.set_xlim([0,14])
     ax1b.set_ylabel('SFH (M$_\odot$/yr)')
-    if legend: ax1b.legend(loc='best',frameon=False)
+    if legend: ax1b.legend(loc=4,frameon=False) #'best'
     
     ax2.set_yscale('log')
     if mstar_lim != None:  ax2.set_ylim(mstar_lim)  # [5e2,1e7]
