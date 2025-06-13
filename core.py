@@ -1,4 +1,3 @@
-
 # darklight.py
 # created 2020.03.20 by stacy kim
 
@@ -89,7 +88,11 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         vmax = np.zeros(len(t))
         for i in range(len(t)):
             vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
-            vmax[i] = max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
+            try: vmax[i] = max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
+            except ValueError as e:
+                print(e)
+                print('halo',halo.halo_number,'at t =',round(t[i],2),'Gyr. skipping!')
+                return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
 
     else:
         if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
@@ -125,13 +128,13 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     else:
         vsmooth = vmax
 
-        
+    
     ############################################################
     # Generate the star formation histories
     nNSC=0
     # check if halo is occupied
     m = halo['M200c'] if 'M200c' in halo.keys() else 1. # if no mass in tangos, then probably very low mass, give arbitrarily low value
-    pocc = occupation_fraction(vmax[-1],m,method=occupation)
+    pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
     occupied = np.random.rand(nscatter) < pocc
 
     # compute in-situ component
@@ -143,7 +146,6 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
             sfhs_insitu[iis]   = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=True,
                                      pre_method=pre_method,post_method=post_method,post_scatter_method=post_scatter_method)
             mstars_insitu[iis] = np.array([0] + [ sum(sfhs_insitu[iis][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
-
 
     # compute accreted component
     mstars_accreted = np.zeros((nscatter,len(tt)))
@@ -228,7 +230,6 @@ def sfr_pre(vmax,method='fiducial'):
     else:
         v = vmax[:]
         v[ v>20 ] = 20.
-    #v = vmax
 
     if   method == 'fiducial': return 10**(6.78*log10(v)-11.6)  # no turn over, simple log-linear fit to dataset below
     elif method == 'fiducial_with_turnover' :  return 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
