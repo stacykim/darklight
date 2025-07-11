@@ -107,8 +107,11 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax2.set_xlabel('t (Gyr)') 
     ax2.set_ylabel('M$_*$ (M$_\odot$)')
     if legend: ax2.legend(loc='best',frameon=False)
+
     
     if not plot_separately:
+
+        if figfn==None:  return fig1, (ax1a,ax1b,ax2)
         
         try: fig1.tight_layout()
         except: print('error when tried tight_layout()!')
@@ -119,6 +122,8 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     else:
 
+        if figfn==None:  return (fig1,fig2), (ax1a,ax1b,ax2)
+        
         plt.figure(1)
         plt.savefig((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')
         print((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')

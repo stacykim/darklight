@@ -131,11 +131,16 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     
     ############################################################
     # Generate the star formation histories
+
     nNSC=0
+    
     # check if halo is occupied
-    m = halo['M200c'] if 'M200c' in halo.keys() else 1. # if no mass in tangos, then probably very low mass, give arbitrarily low value
-    pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
-    occupied = np.random.rand(nscatter) < pocc
+    if fn_vmax == None:
+        m = halo['M200c'] if 'M200c' in halo.keys() else 1. # if no mass in tangos, then probably very low mass, give arbitrarily low value
+        pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
+        occupied = np.random.rand(nscatter) < pocc
+    else:  # if just given file of vmaxes, then assume it is occupied
+        occupied = np.ones(nscatter)
 
     # compute in-situ component
     sfhs_insitu = np.zeros((nscatter,len(tt)))
@@ -150,7 +155,7 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     # compute accreted component
     mstars_accreted = np.zeros((nscatter,len(tt)))
     if mergers and sum(occupied)>0:
-        zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation='all',DMO=DMO,
+        zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
                                                          binning=binning,nscatter=sum(occupied),pre_method=pre_method,post_method=post_method,
                                                          post_scatter_method=post_scatter_method, nsc_ratio=nsc_ratio, t_delay=t_delay)
         mstars_accreted[occupied] = np.array([np.sum(msmerge[zmerge>z],axis=0) for z in zz]).T  # change from mstar for each merger -> cumsum(mstar) for each time
