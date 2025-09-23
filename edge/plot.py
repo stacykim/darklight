@@ -9,7 +9,9 @@ from .utils import *
 from ..constants import *
 
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True, sfh_lim=None, vmax_lim=None, mstar_lim=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., force_rmax_in_rvir=False,
+                                 fn_vmax=None, figfn=None, plot_separately=False, legend=True, 
+                                 sfh_lim=None, vmax_lim=None, mstar_lim=None):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -41,8 +43,12 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     # get halo data
     if fn_vmax==None:
-        t_edge,z_edge,mstar_edge,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile')
-        vmax_edge = np.array([ np.sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
+        t_edge,z_edge,mstar_edge,rbins,menc_dm,r200c = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile','r200c')
+
+        vmax_edge = np.zeros(len(t_edge))
+        for i in range(len(t_edge)):
+            vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
+            vmax_edge[i] = max(vcirc) if not force_rmax_in_rvir else max(vcirc[ rbins[i]<r200c[i] ])
         tre = np.interp(zre,z_edge,t_edge)
     
         tsfh_edge_raw = np.arange(0,t[-1],0.02) # not midpoints, but left of bin

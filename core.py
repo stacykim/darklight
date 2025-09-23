@@ -30,7 +30,8 @@ def smooth(t,y,tnew,sigma=0.5):
 
 
 def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation='all',fn_vmax=None, nsc_ratio=0.7, t_delay=1):
+              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,
+              force_rmax_in_rvir=False, fn_vmax=None, nsc_ratio=0.7, t_delay=1):
 
     """
     Generates a star formation history, which is integrated to obtain the M* for
@@ -40,6 +41,16 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     history, and M*.
 
     Notes on Inputs: 
+
+    vthres = float or 'falling'.  The minimum vmax (in km/s) required for halos to
+        start forming stars after reionization quenching.  By default uses the 
+        EDGE1 value of 26.3 km/s.  The 'falling' model adopts a redshift-dependent
+        vthres that falls after quenching to model the time it takes for cold gas
+        to build up before rejuvenation in halos with M200 ~ few x 10^9 Msun (see
+        Kim et al. for details).
+
+    zre = when quenching occurs.  Assumes all galaxies quench at this redshift.
+        Accepts a float and by default, uses the EDGE1 value of zre=4.
 
     timesteps = resolution of SFH, in Gyr, or 'sim' to use simulation timesteps.
         Used for both main and accreted halos.
@@ -83,16 +94,19 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
 
         if len(t)==0: 
-            return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+            return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter), \
+                np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
 
         vmax = np.zeros(len(t))
         for i in range(len(t)):
             vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
-            try: vmax[i] = max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
+            try: vmax[i] = max(vcirc) if not force_rmax_in_rvir else max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
             except ValueError as e:
                 print(e)
                 print('halo',halo.halo_number,'at t =',round(t[i],2),'Gyr. skipping!')
-                return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+                return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter), \
+                    np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+        vmax *=  sqrt(1-FBARYON) if DMO else 1
 
     else:
         if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
@@ -143,34 +157,34 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         occupied = np.ones(nscatter)
 
     # compute in-situ component
-    sfhs_insitu = np.zeros((nscatter,len(tt)))
+    sfhs_insitu   = np.zeros((nscatter,len(tt)))
     mstars_insitu = np.zeros((nscatter,len(tt)))
+    vsmooth_cored = np.zeros((nscatter,len(tt)))
 
     for iis in range(nscatter):
         if occupied[iis] and mergers != 'only':
-            sfhs_insitu[iis]   = sfh(tt,dt,zz,vsmooth,vthres=vthres,zre=zre,binning=binning,scatter=True,
-                                     pre_method=pre_method,post_method=post_method,post_scatter_method=post_scatter_method)
+            sfhs_insitu[iis],vsmooth_cored[iis] = sfh(tt,dt,zz,vsmooth,np.interp(tt, t[::-1],m200c[::-1]),
+                                                      DMO=DMO,vthres=vthres,zre=zre,binning=binning,scatter=True,
+                                                      pre_method=pre_method,post_method=post_method,post_scatter_method=post_scatter_method)
             mstars_insitu[iis] = np.array([0] + [ sum(sfhs_insitu[iis][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
 
     # compute accreted component
     mstars_accreted = np.zeros((nscatter,len(tt)))
     if mergers and sum(occupied)>0:
         zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
-                                                         binning=binning,nscatter=sum(occupied),pre_method=pre_method,post_method=post_method,
+                                                         binning=binning,nscatter=int(sum(occupied)),pre_method=pre_method,post_method=post_method,
                                                          post_scatter_method=post_scatter_method, nsc_ratio=nsc_ratio, t_delay=t_delay)
-        mstars_accreted[occupied] = np.array([np.sum(msmerge[zmerge>z],axis=0) for z in zz]).T  # change from mstar for each merger -> cumsum(mstar) for each time
-           
 
-        nNSC += check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, halo, vthres=vthres, zre=zre, nsc_ratio=nsc_ratio, t_delay=t_delay)
-        #print('nNSC from check nsc: ', nNSC)
-        #print('nNSCmerge: ', nNSCmerge) #array of 0s
+        # change from mstar for each merger -> cumsum(mstar) for each time
+        mstars_accreted[occupied.astype(bool)] = np.array([np.sum(msmerge[zmerge>z],axis=0) for z in zz]).T 
+
+        nNSC += check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=vthres, zre=zre, nsc_ratio=nsc_ratio, t_delay=t_delay)
         nNSC += sum(nNSCmerge)
-        #print('nNSC final: ', nNSC)      
             
        
     # compute total stellar mass and we're done!
     mstars_tot = mstars_insitu + mstars_accreted
-    return tt,zz,vsmooth,sfhs_insitu,mstars_insitu,mstars_tot, nNSC
+    return tt,zz,vsmooth,vsmooth_cored,sfhs_insitu,mstars_insitu,mstars_tot, nNSC
 
 
 
@@ -228,21 +242,35 @@ def occupation_fraction(vmax,m200,method='edge1'):
 ##################################################
 # SFH ROUTINES
 
+def vmax_rejuvenation(t,z,zre=4.):
+    if hasattr(t,'__iter__'):
+        vSF = np.zeros(len(t))
+        vSF[z<=zre] = 13.5*np.exp(-t[z<=zre]/5)+23
+        return vSF
+    else:
+        return 0 if z>zre else 13.5*np.exp(-t/5)+23
+
+
 def sfr_pre(vmax,method='fiducial'):
 
     if not hasattr(vmax,'__iter__'):
+        if vmax==0:  return 0
         v = vmax if vmax<=20 else 20
     else:
-        v = vmax[:]
+        v = vmax.copy()
         v[ v>20 ] = 20.
 
-    if   method == 'fiducial': return 10**(6.78*log10(v)-11.6)  # no turn over, simple log-linear fit to dataset below
-    elif method == 'fiducial_with_turnover' :  return 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
-    elif method == 'smalls'   :  return 1e-7*(v/5)**4 * exp(v/5)     # with turn over at small vmax, fit by eye
-    elif method == 'tSFzre4'  :  return 10**(7.66*log10(v)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
-    elif method == 'tSFonly'  :  return 10**(6.95*log10(v)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
-    elif method == 'maxfilter':  return 10**(5.23*log10(v)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
+    if   method == 'fiducial': sfr = 10**(6.78*log10(v)-11.6)  # no turn over, simple log-linear fit to dataset below
+    elif method == 'fiducial_with_turnover' :  sfr = 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
+    elif method == 'smalls'   :  sfr = 1e-7*(v/5)**4 * exp(v/5)     # with turn over at small vmax, fit by eye
+    elif method == 'tSFzre4'  :  sfr = 10**(7.66*log10(v)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
+    elif method == 'tSFonly'  :  sfr = 10**(6.95*log10(v)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
+    elif method == 'maxfilter':  sfr = 10**(5.23*log10(v)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
     else:  raise ValueError('Do not recognize sfr_pre method '+method)
+
+    if hasattr(v,'__iter__'):  sfr[v==0] = 0
+
+    return sfr
 
 
 def sfr_post(vmax,method='schechter'):
@@ -276,14 +304,26 @@ def sfr_scatter(z, vmax, zre=4., pre_method='fiducial', post_method='increasing'
         return array([ 10**np.random.normal(0,0.4 if zz > zre else 0.3) for zz in z ])
     
     
-def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',
-        post_scatter_method='increasing',scatter=False):
+def sfh(t, dt, z, vmax, m200, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',
+        post_scatter_method='increasing',scatter=False, DMO=False):
     """
-    Assumes we are given a halo's entire vmax trajectory.
+    Assumes we are given a halo's entire vmax and m200 trajectories.
     Data must be given s.t. time t increases and starts at t=0.
-    Expected that len(dt) = len(t)-1, but must be equal if len(t)==1.
 
     Notes on Inputs:
+
+    t = times corresponding to given vmaxes, in Gyr
+
+    dt = time between timesteps, in Gyr.  Expected that len(dt) = len(t)-1,
+        but must be equal if len(t)==1.
+
+    z = redshifts corresponding to t.  Must have len(t) == len(z).
+
+    vmax = smoothed vmax trajectory of given halo in km/s, at times given by t.
+        Expects len(vmax) == len(t).
+
+    m200 = halo mass trajectory of given halo in MSUN, at times given by t.
+        Expects len(m200) == len(t).
 
     binning = how to map vmaxes onto SFRs
 
@@ -300,6 +340,11 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
             and increases towards smaller vmax
         'flat' = adopts a 1-sigma symmertic scatter of 0.3 dex
     """
+
+    # compute threshold vmax required for star formation
+    vSF = vthres if vthres != 'falling' else vmax_rejuvenation(t,z,zre=zre)
+
+    # compute average vmax before reionization
     if z[0] < zre: vavg_pre = 0.
     else:
         if len(t)==1: vavg_pre = vmax[0]
@@ -307,28 +352,53 @@ def sfh(t, dt, z, vmax, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial
         if t[ire]-t[0]==0:
             vavg_pre = vmax[ire]
         else:
-            vavg_pre = sum(vmax[:ire]*dt[:ire])/(t[ire]-t[0]) #mean([ vv for vv,zz in zip(vmax,z) if zz > zre ])
+            vavg_pre = sum(vmax[:ire]*dt[:ire])/(t[ire]-t[0])
+
+    vsmooth_cored = vmax.copy()
+
+    # compute SFHs
     if   binning == 'all':
-        sfrs = array([ sfr_pre(vv,method=pre_method)       if zz > zre else (sfr_post(vv,method=post_method) if vv > vthres else 0) for vv,zz in zip(vmax,z) ] )
+        sfrs = array([ sfr_pre(vv,method=pre_method)       if zz > zre else \
+                       (sfr_post(vv,method=post_method) if vv > v0 else 0) for vv,v0,zz in zip(vmax,vSF,z) ] )
     elif binning == '2bins':
-        sfrs = array([ sfr_pre(vavg_pre,method=pre_method) if zz > zre else sfr_post(vmax[-1],method=post_method) for vv,zz in zip(vmax,z) ])
+        sfrs = array([ sfr_pre(vavg_pre,method=pre_method) if zz > zre else \
+                       sfr_post(vmax[-1],method=post_method) for vv,zz in zip(vmax,z) ])
+
     elif binning == '3bins':
-        sfrs = array([ sfr_pre(vavg_pre,method=pre_method) if zz > zre else (sfr_post(vmax[-1],method=post_method) if vv > vthres else 0) for vv,zz in zip(vmax,z) ])
+
+        sfrs = np.zeros(len(z))
+        sfrs[z>zre] = sfr_pre(vavg_pre,method=pre_method)*sfr_scatter(z[z>zre],vmax[z>zre],zre=zre,pre_method=pre_method)
+
+        # compute additional vmax suppression factor due to baryons
+        if DMO and z[0]>zre:
+
+            m200_pre = m200[ire]
+            mstar_insitu_pre = np.sum(sfrs[:ire]*dt[:ire]*1e9)
+
+            if m200_pre==0 or mstar_insitu_pre==0: 
+                suppression = 1
+            else: 
+                suppression = 0.9123 * (mstar_insitu_pre/m200_pre)**-0.00479
+                if suppression > 1: suppression = 1
+ 
+            vsmooth_cored[z<=zre] = vsmooth_cored[z<=zre]*suppression
+
+        iSFpost = (z<=zre)*(vsmooth_cored>vSF)
+        sfrs[ iSFpost ] = sfr_post(vsmooth_cored[-1],method=post_method)*sfr_scatter(z[iSFpost],vmax[iSFpost],zre=zre,post_method=post_scatter_method)
+
+        return sfrs, vsmooth_cored
+
     else:
         raise ValueError('SFR binning method '+binning+' unrecognized')
 
-    if not scatter: return sfrs
+    if not scatter: return sfrs, vsmooth_cored
     else:
-        #return array([ sfr * 10**np.random.normal(0,0.4 if zz > zre else 0.3) for sfr,zz in zip(sfrs,z) ])
-        return sfrs * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_scatter_method)
+        return sfrs * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_scatter_method), vsmooth_cored
+
 
 #################################################
 
-#from astropy.cosmology import Planck15 as cosmo  
-#from astropy.cosmology import z_at_value
-#import astropy.units as u
-
-def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, halo, vthres=26.3, zre=4., nsc_ratio=0.7, t_delay=1):
+def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=26.3, zre=4., nsc_ratio=0.7, t_delay=1):
 
     if len(zmerge)==0: return 0
 
@@ -350,16 +420,18 @@ def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, halo, vthres=26.3, zre=4., ns
     major_mergers = (tmerge > t_reion+t_delay) & (np.array(qmerge)<1/nsc_ratio) & (t_coalescence < 13.8)
     if sum(major_mergers)==0: return 0
 
-     #finding when mergers happen so can use vsmooth
+    #finding when mergers happen so can use vsmooth
     zz_merge = [np.argmin(np.abs(np.array(zz) - z)) for z in zmerge[major_mergers]]
     zz_final = [np.argmin(np.abs(np.array(pro_t) - t)) for t in tmerge[major_mergers]]
 
-     #record mergers which cause vmax to surpass SF threshold
+    #record mergers which cause vmax to surpass SF threshold
     nsc_mergers=[]
-    #for i in np.argwhere(major_mergers):
+    vSF = vthres*np.ones(len(tt)) if vthres != 'falling' else vmax_rejuvenation(tt,zz,zre=zre)
     for k, j in zip(zz_merge, zz_final):
         #if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[j]>=vthres:
-        if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[k+10 if k+10<len(vsmooth) else len(vsmooth)-1]>=vthres:
+        ipremerger = k-10 if k-10>0 else 0
+        ipostmerger = k+10 if k+10<len(vsmooth) else len(vsmooth)-1
+        if vsmooth[ipremerger] < vSF[ipremerger] and vsmooth[ipostmerger] >= vSF[ipostmerger]:
             nsc_mergers.append(k)
             print('merger z=',zz[k],'[',k,'] main halo', halo)#,'merging halo',hmerge[i][1])
             
@@ -424,7 +496,7 @@ def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False,
 
         
             # went through all fail conditions, now calculate vmax trajectory, SFH --> M*
-            t_sub,z_sub,vsmooth_sub,sfh_sub,mstar_insitu_sub,mstar_tot_sub,nNSC_sub = DarkLight(hsub, nscatter=nscatter, vthres=vthres, zre=zre,
+            t_sub,z_sub,vsmooth_sub,vsmooth_cored_sub,sfh_sub,mstar_insitu_sub,mstar_tot_sub,nNSC_sub = DarkLight(hsub, nscatter=nscatter, vthres=vthres, zre=zre,
                                                                                        pre_method=pre_method, post_method=post_method,
                                                                                        post_scatter_method=post_scatter_method,
                                                                                        occupation=occupation, mergers=True,
