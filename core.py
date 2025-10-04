@@ -29,28 +29,89 @@ def smooth(t,y,tnew,sigma=0.5):
 
 
 
-def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-              binning='3bins',timesteps='sim',mergers=True,DMO=False,occupation=2.5e7,
-              force_rmax_in_rvir=False, fn_vmax=None, nsc_ratio=0.7, t_delay=1):
+def DarkLight(halo, DMO=True, vmax_file=None, n=1, 
+              vthres='falling', zq=4., occupation=2.5e7,
+              prequench='fiducial', postquench='schechter', postquench_scatter='increasing',
+              nsc_ratio=0.7, t_delay=1,
+              mapping='3bins', timesteps='sim', mergers=True, force_rmax_in_rvir=False):
 
     """
     Generates a star formation history, which is integrated to obtain the M* for
     a given halo. The vmax trajectory is smoothed before applying a SFH-vmax 
     relation to reduce temporary jumps in vmax due to mergers. Returns the
     timesteps t, z, the smoothed vmax trajectory, the in-situ star formation 
-    history, and M*.
+    history, the stellar mass formed in-situ, and the total stellar mass
+    (i.e. includes accreted stars).  Each returned array except for the t and z
+    arrays have n rows, one for each of n realizations.
 
     Notes on Inputs: 
+
+    halo = tangos Halo object for which to compute properties.  If not available,
+        can instead run on a vmax trajectory given in a file (see next).
+
+    DMO = True if running on a DMO simulation.  Will then multiply particle
+        masses by sqrt(1-fbary) and an additional suppression to match values in 
+        full hydrodynamic sims, as measured in EDGE (see Kim et al. 2024)
+
+    vmax_file = string or None.  Alternative method to supply a halo, if tangos Halo
+        object is not available.  Can supply a file with name vmax_file that has 
+        three columns: time (Gyr), redshift, vmax (km/s), with each row corresponding
+        to a time step.  Expects time to be in increasing order.
+
+    n = integer. The number of galaxy realizations to create.
 
     vthres = float or 'falling'.  The minimum vmax (in km/s) required for halos to
         start forming stars after reionization quenching.  By default uses the 
         EDGE1 value of 26.3 km/s.  The 'falling' model adopts a redshift-dependent
         vthres that falls after quenching to model the time it takes for cold gas
         to build up before rejuvenation in halos with M200 ~ few x 10^9 Msun (see
-        Kim et al. for details).
+        Kim et al. 2024 for details).
 
-    zre = when quenching occurs.  Assumes all galaxies quench at this redshift.
-        Accepts a float and by default, uses the EDGE1 value of zre=4.
+    zq = the redshift when quenching occurs.  Assumes all galaxies immediately
+        quench.  Accepts a float and by default, uses the EDGE1 value of zq=4.
+
+    occupation = string or float.  Sets which halos have galaxies, given as a halo
+        mass in solar masses, or one of the occupation functions below.  If a float, 
+        halos with masses below are not allowed to host galaxies.  By default, 
+        assumes 2.5e7 msun, based on the resolution limit of the EDGE sims.  
+
+        The following occupation functions are supported.  These are derived from
+        simulations or inferred from the Milky Way dwarfs.
+
+        'all' = all halos DarkLight estimates have non-zero stellar mass is occupied
+        'edge1' = occupation fraction derived from fiducial EDGE1 simulations
+        'edge1rt' = occupation fraction from EDGE1 simulations with radiative 
+            transfer; this is significantly higher than 'edge1'
+        'nadler20' = from Nadler+ 2020's fit to the MW dwarfs. Note that this
+            was parameterized in M200c, but we have made some simplifying 
+            assumptions to convert it to vmax.
+
+    prequench = the pre-quenching SFR-vmax relation to use.  By default, uses
+        'fiducal' (see Kim et al. 2024).  See definition of sfr_pre() to see
+        alternative methods.
+
+    postquench = the post-quenching SFR-vmax relation to use.  By default,
+        uses 'schechter'.  See definition of sfr_post() to see alternative methods.
+
+    postquench_scatter = what scatter to assume in SFR-vmax relation after 
+        reionization quenching
+
+        'increasing' = adopts a scatter that's small for halos with large vmax,
+            and increases towards smaller vmax
+        'flat' = adopts a 1-sigma symmertic scatter of 0.3 dex
+
+    mapping = how to apply the SFR-vmax relation.  The options are:
+
+        'all' = maps vmax at each timestep into the SFR for that timestep
+        '3bins' = the default, applies 
+            (1) prequench relation used to map average vmax before quenching
+                to derive single <SFR> for prequench period
+            (2) quenched period (SFR=0) after zq while vmax < vthres
+            (3) postquench relation used to derive a single SFR based on 
+                vmax(z=0) for all timesteps after zq when vmax > vthres
+        '2bins' = (1) like above before zq and (2) postquench relation
+            after zq (even if vmax < vthres), again using single SFR
+            based on vmax(z=0) for all timesteps
 
     timesteps = resolution of SFH, in Gyr, or 'sim' to use simulation timesteps.
         Used for both main and accreted halos.
@@ -62,40 +123,26 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         False = only compute M* of stars that formed in-situ in main-halo
         'only' = only compute M* of mergers
 
-    DMO = True if running on a DMO simluation.  Will then multiply particle
-        masses by sqrt(1-fbary).
+    force_rmax_in_rvir = whether to require rmax to be within r200.  In the
+        EDGE simulations, more accurately reprdouces hydrodynamic simulations
+        if this is turned off (set to False).
 
-    occupation = how to determine which halos have galaxies, given as a halo mass
-        in solar masses.  Less massive halos do not have galaxies, while more
-        massive ones do.  By default, assumes 2.5e7 msun.  Alternatively, one 
-        can adopt occupation functions from simulations or fits to data.  
-        Supported ones are:
-
-        'all' = all halos DarkLight estimates have non-zero stellar mass is occupied
-        'edge1' = occupation fraction derived from fiducial EDGE1 simulations
-        'edge1rt' = occupation fraction from EDGE1 simulations with radiative 
-            transfer; this is significantly higher than 'edge1'
-        'nadler20' = from Nadler+ 2020's fit to the MW dwarfs. Note that this
-            was parameterized in M200c, but we have made some simplifying 
-            assumptions to convert it to vmax.
-
-    post_scatter_method = what scatter to assume after reionization
-
-        'increasing' = adopts a scatter that's small for halos with large vmax,
-            and increases towards smaller vmax
-        'flat' = adopts a 1-sigma symmertic scatter of 0.3 dex
     """
 
     assert (mergers=='only' or mergers==True or mergers==False), "DarkLight: keyword 'mergers' must be True, False, or 'only'! Got "+str(mergers)+'.'
 
+    if halo==None:
+        print('got halo==None !')
+        return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n)
+
+
     # compute or read in vmax trajectory
-    if fn_vmax==None:
+    if vmax_file==None:
 
         t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
 
         if len(t)==0: 
-            return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter), \
-                np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+            return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([])
 
         vmax = np.zeros(len(t))
         for i in range(len(t)):
@@ -104,18 +151,12 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
             except ValueError as e:
                 print(e)
                 print('halo',halo.halo_number,'at t =',round(t[i],2),'Gyr. skipping!')
-                return np.array([]),np.array([]),np.array([]), np.array([[]]*nscatter), \
-                    np.array([[]]*nscatter),np.array([[]]*nscatter),np.array([[]]*nscatter), np.array([])
+                return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([])
         vmax *=  sqrt(1-FBARYON) if DMO else 1
 
     else:
-        if fn_vmax == '../outliers/vmax-pynbody_halo600lm.dat':
-            z = halo.calculate_for_progenitors('z()')[0]
-            t,vmax = loadtxt(fn_vmax,unpack=True,usecols=(0,2))
-            t,vmax = t[::-1],vmax[::-1] # expects them to be in backwards time order
-        else:
-            t,z,vmax = loadtxt(fn_vmax,unpack=True)
-            t,z,vmax = t[::-1],z[::-1],vmax[::-1] # expects them to be in backwards time order
+        t,z,vmax = loadtxt(vmax_file,unpack=True)
+        t,z,vmax = t[::-1],z[::-1],vmax[::-1] # change to backwards time order to match tangos
 
     
     ############################################################
@@ -128,12 +169,12 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
         tt = arange(t[-1],t[0],timesteps)
         zz = interp(tt, t[::-1], z[::-1])
     
-    # make sure reionization included in time steps, if halo exists then
-    if zz[-1] < zre and zz[0] > zre:
-        if zre not in zz:
-            ire = where(zz<=zre)[0][0]
-            tt = concatenate([ tt[:ire], [interp(zre,z,t)], tt[ire:] ])
-            zz = concatenate([ zz[:ire], [zre],             zz[ire:] ])
+    # make sure zq included in time steps, if halo exists then
+    if zz[-1] < zq and zz[0] > zq:
+        if zq not in zz:
+            iq = where(zz<=zq)[0][0]
+            tt = concatenate([ tt[:iq], [interp(zq,z,t)], tt[iq:] ])
+            zz = concatenate([ zz[:iq], [zq],             zz[iq:] ])
 
     dt = tt[1:]-tt[:-1] # since len(dt) = len(t)-1, need to be careful w/indexing below
 
@@ -149,42 +190,43 @@ def DarkLight(halo,nscatter=1,vthres=26.3,zre=4.,pre_method='fiducial',post_meth
     nNSC=0
     
     # check if halo is occupied
-    if fn_vmax == None:
+    if vmax_file == None:
         m = halo['M200c'] if 'M200c' in halo.keys() else 1. # if no mass in tangos, then probably very low mass, give arbitrarily low value
         pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
-        occupied = np.random.rand(nscatter) < pocc
+        occupied = np.random.rand(n) < pocc
     else:  # if just given file of vmaxes, then assume it is occupied
-        occupied = np.ones(nscatter)
+        occupied = np.ones(n)
 
     # compute in-situ component
-    sfhs_insitu   = np.zeros((nscatter,len(tt)))
-    mstars_insitu = np.zeros((nscatter,len(tt)))
-    vsmooth_cored = np.zeros((nscatter,len(tt)))
+    sfhs_insitu   = np.zeros((n,len(tt)))
+    mstars_insitu = np.zeros((n,len(tt)))
+    vsmooth_cored = np.zeros((n,len(tt)))
 
-    for iis in range(nscatter):
+    for iis in range(n):
         if occupied[iis] and mergers != 'only':
             sfhs_insitu[iis],vsmooth_cored[iis] = sfh(tt,dt,zz,vsmooth,np.interp(tt, t[::-1],m200c[::-1]),
-                                                      DMO=DMO,vthres=vthres,zre=zre,binning=binning,scatter=True,
-                                                      pre_method=pre_method,post_method=post_method,post_scatter_method=post_scatter_method)
+                                                      DMO=DMO,vthres=vthres,zq=zq,mapping=mapping,scatter=True,
+                                                      prequench=prequench,postquench=postquench,postquench_scatter=postquench_scatter)
             mstars_insitu[iis] = np.array([0] + [ sum(sfhs_insitu[iis][:i+1]*1e9*dt[:i+1]) for i in range(len(dt)) ])
 
     # compute accreted component
-    mstars_accreted = np.zeros((nscatter,len(tt)))
+    mstars_accreted = np.zeros((n,len(tt)))
     if mergers and sum(occupied)>0:
-        zmerge, qmerge, hmerge, msmerge, nNSCmerge = accreted_stars(halo,vthres=vthres,zre=zre,timesteps=timesteps,occupation=occupation,DMO=DMO,
-                                                         binning=binning,nscatter=int(sum(occupied)),pre_method=pre_method,post_method=post_method,
-                                                         post_scatter_method=post_scatter_method, nsc_ratio=nsc_ratio, t_delay=t_delay)
+
+        zmerge, qmerge, hmerge, msmerge,nNSCmerge = accreted_stars(halo,vthres=vthres,zq=zq,timesteps=timesteps,occupation=occupation,DMO=DMO,
+                                                         mapping=mapping,n=int(sum(occupied)),prequench=prequench,postquench=postquench,
+                                                         postquench_scatter=postquench_scatter, nsc_ratio=nsc_ratio, t_delay=t_delay)
 
         # change from mstar for each merger -> cumsum(mstar) for each time
         mstars_accreted[occupied.astype(bool)] = np.array([np.sum(msmerge[zmerge>z],axis=0) for z in zz]).T 
 
-        nNSC += check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=vthres, zre=zre, nsc_ratio=nsc_ratio, t_delay=t_delay)
+        nNSC += check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=vthres, zq=zq, nsc_ratio=nsc_ratio, t_delay=t_delay)
         nNSC += sum(nNSCmerge)
             
        
     # compute total stellar mass and we're done!
     mstars_tot = mstars_insitu + mstars_accreted
-    return tt,zz,vsmooth,vsmooth_cored,sfhs_insitu,mstars_insitu,mstars_tot, nNSC
+    return tt,zz,vsmooth_cored,sfhs_insitu,mstars_insitu,mstars_tot,nNSC
 
 
 
@@ -242,13 +284,13 @@ def occupation_fraction(vmax,m200,method='edge1'):
 ##################################################
 # SFH ROUTINES
 
-def vmax_rejuvenation(t,z,zre=4.):
+def vmax_rejuvenation(t,z,zq=4.):
     if hasattr(t,'__iter__'):
         vSF = np.zeros(len(t))
-        vSF[z<=zre] = 13.5*np.exp(-t[z<=zre]/5)+23
+        vSF[z<=zq] = 13.5*np.exp(-t[z<=zq]/5)+23
         return vSF
     else:
-        return 0 if z>zre else 13.5*np.exp(-t/5)+23
+        return 0 if z>zq else 13.5*np.exp(-t/5)+23
 
 
 def sfr_pre(vmax,method='fiducial'):
@@ -262,10 +304,6 @@ def sfr_pre(vmax,method='fiducial'):
 
     if   method == 'fiducial': sfr = 10**(6.78*log10(v)-11.6)  # no turn over, simple log-linear fit to dataset below
     elif method == 'fiducial_with_turnover' :  sfr = 2e-7*(v/5)**3.75 * exp(v/5)  # with turn over at small vmax, SFR vmax calculated from halo birth, fit by eye
-    elif method == 'smalls'   :  sfr = 1e-7*(v/5)**4 * exp(v/5)     # with turn over at small vmax, fit by eye
-    elif method == 'tSFzre4'  :  sfr = 10**(7.66*log10(v)-12.95) # also method=='tSFzre4';  same as below, but from tSFstart to reionization (zre = 4)
-    elif method == 'tSFonly'  :  sfr = 10**(6.95*log10(v)-11.6)  # w/my SFR and vmax (max(GM/r), time avg, no forcing (0,0), no extrap), from tSFstart to tSFstop
-    elif method == 'maxfilter':  sfr = 10**(5.23*log10(v)-10.2)  # using EDGE orig + GMOs w/maxfilt vmax, SFR from 0,t(zre)
     else:  raise ValueError('Do not recognize sfr_pre method '+method)
 
     if hasattr(v,'__iter__'):  sfr[v==0] = 0
@@ -274,38 +312,37 @@ def sfr_pre(vmax,method='fiducial'):
 
 
 def sfr_post(vmax,method='schechter'):
-    if   method == 'schechter'    :  return 7.06 * (vmax/182.4)**3.07 * exp(-182.4/vmax)  # schechter fxn fit
-    elif method == 'schechter_mc' :  return 0.22 * (vmax/85.)**3.71 * np.exp(-85./vmax)   # schechter b/t fiducial and mid
-    elif method == 'schechter_mid':  return 0.4 * (vmax/100.)**3.71 * np.exp(-100./vmax)  # schechter fxn b/t fiducial and MW
-    elif method == 'schechterMW'  :  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
-    elif method == 'linear'       :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
+    if   method == 'schechter'   :  return 7.06 * (vmax/182.4)**3.07 * exp(-182.4/vmax)  # schechter fxn fit
+    elif method == 'schechterMW' :  return 6.28e-3 * (vmax/43.54)**4.35 * exp(-43.54/vmax)  # schechter fxn fit w/MW dwarfs
+    elif method == 'linear'      :  return 10**( 5.48*log10(vmax) - 11.9 )  # linear fit w/MW dwarfs
 
 
-def sfr_scatter(z, vmax, zre=4., pre_method='fiducial', post_method='increasing'):
+def sfr_scatter(z, vmax, zq=4., prequench='fiducial', postquench='increasing'):
     """
     Returns scatter in the SFR-vmax relation.  Assumes 0.4 dex lognormal scatter
-    before reionization.  Post-reionization scatter is determined by given method.
+    before reionization quenching.  Postquench scatter is determined by given method.
 
     z and vmax must be arrays of the same length.
 
     Notes on Inputs:
 
-    method = type of relation to adopt after reionization
+    method = type of relation to adopt after reionization quenching
 
         'increasing' = scatter increases for smaller halos (lower vmax)
         'flat'       = 0.3 dex lognormal scatter (independent of mass)
     """
 
-    if post_method=='increasing':  # increasing scatter for small vmax post-reionization
-        log10scatter = array([ 0.4 if zz > zre else (-0.651*log10(vv)+1.74) for zz,vv in zip(z,vmax) ])
+    if postquench=='increasing':  # increasing scatter for small vmax after quenching
+        log10scatter = array([ 0.4 if zz > zq else (-0.651*log10(vv)+1.74) for zz,vv in zip(z,vmax) ])
         log10scatter[ log10scatter < 0.2 ] = 0.2 # max out at 0.2 dex at high-mass end, when extrapolating above fit
         return np.array([ 10**np.random.normal(0,log10s) for log10s in log10scatter ])
     else:
-        return array([ 10**np.random.normal(0,0.4 if zz > zre else 0.3) for zz in z ])
+        return array([ 10**np.random.normal(0,0.4 if zz > zq else 0.3) for zz in z ])
     
     
-def sfh(t, dt, z, vmax, m200, vthres=26.3, zre=4.,binning='3bins',pre_method='fiducial',post_method='schechter',
-        post_scatter_method='increasing',scatter=False, DMO=False):
+def sfh(t, dt, z, vmax, m200, vthres=26.3, zq=4.,mapping='3bins',prequench='fiducial',postquench='schechter',
+        postquench_scatter='increasing',scatter=False, DMO=False):
+
     """
     Assumes we are given a halo's entire vmax and m200 trajectories.
     Data must be given s.t. time t increases and starts at t=0.
@@ -325,16 +362,16 @@ def sfh(t, dt, z, vmax, m200, vthres=26.3, zre=4.,binning='3bins',pre_method='fi
     m200 = halo mass trajectory of given halo in MSUN, at times given by t.
         Expects len(m200) == len(t).
 
-    binning = how to map vmaxes onto SFRs
+    mapping = how to map vmaxes onto SFRs
 
        'all' sim points
-       '2bins' pre/post reion, with pre-SFR from <vmax(z>zre)>, post-SFR from vmax(z=0)
-       '3bins' which adds SFR = 0 phase after reion while vmax < vthres
+       '2bins' pre/post quench, with pre-SFR from <vmax(z>zq)>, post-SFR from vmax(z=0)
+       '3bins' which adds SFR = 0 phase after reionization quenching while vmax < vthres
 
-    scatter = True adds a lognormal scatter to SFRs.  Pre-reionization, the 
-        1-sigma symmetric scatter is 0.4 dex.
+    scatter = True adds a lognormal scatter to SFRs.  Before reionization quenching,
+        the 1-sigma symmetric scatter is 0.4 dex.
 
-    post_scatter_method = what scatter to assume after reionization
+    postquench_scatter = what scatter to assume after reionization quenching
 
         'increasing' = adopts a scatter that's small for halos with large vmax,
             and increases towards smaller vmax
@@ -342,38 +379,39 @@ def sfh(t, dt, z, vmax, m200, vthres=26.3, zre=4.,binning='3bins',pre_method='fi
     """
 
     # compute threshold vmax required for star formation
-    vSF = vthres if vthres != 'falling' else vmax_rejuvenation(t,z,zre=zre)
+    vSF = vthres if vthres != 'falling' else vmax_rejuvenation(t,z,zq=zq)
 
-    # compute average vmax before reionization
-    if z[0] < zre: vavg_pre = 0.
+    # compute average vmax before reionization quenching
+    if z[0] < zq: vavg_pre = 0.
     else:
         if len(t)==1: vavg_pre = vmax[0]
-        ire = where(z>=zre)[0][-1]
-        if t[ire]-t[0]==0:
-            vavg_pre = vmax[ire]
+        iq = where(z>=zq)[0][-1]
+        if t[iq]-t[0]==0:
+            vavg_pre = vmax[iq]
         else:
-            vavg_pre = sum(vmax[:ire]*dt[:ire])/(t[ire]-t[0])
+            vavg_pre = sum(vmax[:iq]*dt[:iq])/(t[iq]-t[0])
 
     vsmooth_cored = vmax.copy()
 
     # compute SFHs
-    if   binning == 'all':
-        sfrs = array([ sfr_pre(vv,method=pre_method)       if zz > zre else \
-                       (sfr_post(vv,method=post_method) if vv > v0 else 0) for vv,v0,zz in zip(vmax,vSF,z) ] )
-    elif binning == '2bins':
-        sfrs = array([ sfr_pre(vavg_pre,method=pre_method) if zz > zre else \
-                       sfr_post(vmax[-1],method=post_method) for vv,zz in zip(vmax,z) ])
+    if   mapping == 'all':
+        sfrs = array([ sfr_pre(vv,method=prequench)       if zz > zq else \
+                       (sfr_post(vv,method=postquench) if vv > v0 else 0) for vv,v0,zz in zip(vmax,vSF,z) ] )
+        
+    elif mapping == '2bins':
+        sfrs = array([ sfr_pre(vavg_pre,method=prequench) if zz > zq else \
+                       sfr_post(vmax[-1],method=postquench) for vv,zz in zip(vmax,z) ])
 
-    elif binning == '3bins':
+    elif mapping == '3bins':
 
         sfrs = np.zeros(len(z))
-        sfrs[z>zre] = sfr_pre(vavg_pre,method=pre_method)*sfr_scatter(z[z>zre],vmax[z>zre],zre=zre,pre_method=pre_method)
+        sfrs[z>zq] = sfr_pre(vavg_pre,method=prequench)*sfr_scatter(z[z>zq],vmax[z>zq],zq=zq,prequench=prequench)
 
         # compute additional vmax suppression factor due to baryons
-        if DMO and z[0]>zre:
+        if DMO and z[0]>zq:
 
-            m200_pre = m200[ire]
-            mstar_insitu_pre = np.sum(sfrs[:ire]*dt[:ire]*1e9)
+            m200_pre = m200[iq]
+            mstar_insitu_pre = np.sum(sfrs[:iq]*dt[:iq]*1e9)
 
             if m200_pre==0 or mstar_insitu_pre==0: 
                 suppression = 1
@@ -381,31 +419,31 @@ def sfh(t, dt, z, vmax, m200, vthres=26.3, zre=4.,binning='3bins',pre_method='fi
                 suppression = 0.9123 * (mstar_insitu_pre/m200_pre)**-0.00479
                 if suppression > 1: suppression = 1
  
-            vsmooth_cored[z<=zre] = vsmooth_cored[z<=zre]*suppression
+            vsmooth_cored[z<=zq] = vsmooth_cored[z<=zq]*suppression
 
-        iSFpost = (z<=zre)*(vsmooth_cored>vSF)
-        sfrs[ iSFpost ] = sfr_post(vsmooth_cored[-1],method=post_method)*sfr_scatter(z[iSFpost],vmax[iSFpost],zre=zre,post_method=post_scatter_method)
+        iSFpost = (z<=zq)*(vsmooth_cored>vSF)
+        sfrs[ iSFpost ] = sfr_post(vsmooth_cored[-1],method=postquench)*sfr_scatter(z[iSFpost],vmax[iSFpost],zq=zq,postquench=postquench_scatter)
 
         return sfrs, vsmooth_cored
 
     else:
-        raise ValueError('SFR binning method '+binning+' unrecognized')
+        raise ValueError('SFR mapping method '+mapping+' unrecognized')
 
     if not scatter: return sfrs, vsmooth_cored
     else:
-        return sfrs * sfr_scatter(z,vmax,zre=zre,pre_method=pre_method,post_method=post_scatter_method), vsmooth_cored
+        return sfrs * sfr_scatter(z,vmax,zq=zq,prequench=prequench,postquench=postquench_scatter), vsmooth_cored
 
 
 #################################################
 
-def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=26.3, zre=4., nsc_ratio=0.7, t_delay=1):
+def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=26.3, zq=4., nsc_ratio=0.7, t_delay=1):
 
     if len(zmerge)==0: return 0
 
     #finding values of all progenitors
     pro_t, pro_z, pro_r200c, pro_m200c = halo.calculate_for_progenitors('t()','z()', 'r200c','M200c')
 
-    t_reion = np.interp(zre, pro_z, pro_t) # time when reionization occurs
+    t_reion = np.interp(zq, pro_z, pro_t) # time when reionization occurs
     tmerge = np.interp(zmerge, pro_z, pro_t)
     imerge = [np.argmin(np.abs(np.array(pro_z) - z)) for z in zmerge]
 
@@ -426,7 +464,7 @@ def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=26.3, zre=4.
 
     #record mergers which cause vmax to surpass SF threshold
     nsc_mergers=[]
-    vSF = vthres*np.ones(len(tt)) if vthres != 'falling' else vmax_rejuvenation(tt,zz,zre=zre)
+    vSF = vthres*np.ones(len(tt)) if vthres != 'falling' else vmax_rejuvenation(tt,zz,zq=zq)
     for k, j in zip(zz_merge, zz_final):
         #if vsmooth[k-10 if k-10>0 else 0]<vthres and vsmooth[j]>=vthres:
         ipremerger = k-10 if k-10>0 else 0
@@ -438,13 +476,13 @@ def check_nsc(qmerge, zmerge, hmerge, vsmooth, zz, tt, halo, vthres=26.3, zre=4.
     return 1 if len(nsc_mergers)>0 else 0 # len(nsc_mergers)
 
 
-
 ##################################################
 # ACCRETED STARS
 
-def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False, nscatter=1,
-                   pre_method='fiducial',post_method='schechter',post_scatter_method='increasing',
-                   binning='3bins', timesteps='sim',occupation=2.5e7, DMO=False, nsc_ratio=0.7, t_delay=1):
+def accreted_stars(halo, vthres=26.3, zq=4., plot_mergers=False, verbose=False, n=1,
+                   prequench='fiducial',postquench='schechter',postquench_scatter='increasing',
+                   mapping='3bins', timesteps='sim',occupation=2.5e7, DMO=False, nsc_ratio=0.7, t_delay=1):
+
     """
     Returns redshift, major/minor mass ratio, halo objects, and stellar mass accreted 
     for each of the given halo's mergers.  Does not compute the stellar contribution
@@ -462,7 +500,7 @@ def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False,
         plt.plot(t,vmax,color='k')
   
     zmerge, qmerge, hmerge = get_mergers_of_major_progenitor(halo)
-    msmerge = zeros((len(zmerge),nscatter))
+    msmerge = zeros((len(zmerge),n))
     nNSCmerge = zeros(len(zmerge))
   
     # record main branch components
@@ -496,15 +534,15 @@ def accreted_stars(halo, vthres=26.3, zre=4., plot_mergers=False, verbose=False,
 
         
             # went through all fail conditions, now calculate vmax trajectory, SFH --> M*
-            t_sub,z_sub,vsmooth_sub,vsmooth_cored_sub,sfh_sub,mstar_insitu_sub,mstar_tot_sub,nNSC_sub = DarkLight(hsub, nscatter=nscatter, vthres=vthres, zre=zre,
-                                                                                       pre_method=pre_method, post_method=post_method,
-                                                                                       post_scatter_method=post_scatter_method,
+            t_sub,z_sub,vsmooth_cored_sub,sfh_sub,mstar_insitu_sub,mstar_tot_sub,nNSC_sub = DarkLight(hsub, n=n, vthres=vthres, zq=zq,
+                                                                                       prequench=prequench, postquench=postquench,
+                                                                                       postquench_scatter=postquench_scatter,
                                                                                        occupation=occupation, mergers=True,
-                                                                                       binning=binning, timesteps=timesteps, DMO=DMO, nsc_ratio=nsc_ratio, t_delay=t_delay)
+                                                                                       mapping=mapping, timesteps=timesteps, DMO=DMO,
+                                                                                       nsc_ratio=nsc_ratio, t_delay=t_delay)
             if len(mstar_tot_sub[0])!=0:  
                 msmerge[im] = mstar_tot_sub[:,-1]
                 nNSCmerge[im]=nNSC_sub
-
 
             if plot_mergers and implot < 10:
                 plt.plot(t_sub,vmax_sub,color='C'+str(im),alpha=0.25)

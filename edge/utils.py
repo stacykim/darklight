@@ -113,13 +113,12 @@ def load_tangos_data(simname,machine='dirac',physics='edge1',verbose=True):
 
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
-
-    if verbose: print('looking for database at',tangos_path)
     
     # get the data
     tangos.core.init_db(tangos_path)
     sim = tangos.get_simulation('void_volume' if simname=='void' else simname)
-
+    if verbose: print('found database at',tangos_path)
+    
     return sim
 
 
