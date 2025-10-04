@@ -71,7 +71,7 @@ def get_shortname(simname, physics='edge1'):
 
 
 
-def get_number_of_snapshots(simname,machine='astro',physics='edge1'):
+def get_number_of_snapshots(simname,machine='dirac',physics='edge1'):
     
     path = get_pynbody_path(simname,machine=machine,physics=physics)
     snapshots = glob.glob(os.path.join(path,'output_?????'))
@@ -79,7 +79,7 @@ def get_number_of_snapshots(simname,machine='astro',physics='edge1'):
 
 
 
-def load_tangos_data(simname,machine='astro',physics='edge1',verbose=True):
+def load_tangos_data(simname,machine='dirac',physics='edge1',verbose=True):
  
     if physics=='edge2':  raise ValueError('no tangos databases available yet for EDGE2 suite!')
 
@@ -101,33 +101,29 @@ def load_tangos_data(simname,machine='astro',physics='edge1',verbose=True):
 
     elif machine=='dirac':
 
-        if halonum=='383':
-            tangos_path = '/scratch/dp101/shared/EDGE/tangos/'
+        if simname=='void':
+            tangos_path = '/scratch/dp324/shared/dp101/EDGE/tangos/void.db'
+        elif halonum=='383':
+            tangos_path = '/scratch/dp324/shared/dp101/EDGE/tangos/Halo383_updated_versions.db'
         elif halonum=='153' or halonum=='261' or halonum=='339':
-            tangos_path = '/scratch/dp191/shared/tangos/'
+            tangos_path = '/scratch/dp324/shared/dp191/tangos/Halo'+halonum+'.db'
         else:
             # need to add support for EDGE1 reruns once databases made.
-            tangos_path = '/scratch/dp101/shared/EDGE/tangos/'
+            tangos_path = '/scratch/dp324/shared/dp101/EDGE/tangos/Halo'+halonum+'.db'
 
     else:
         raise ValueError('support for machine '+machine+' not implemented!')
-
-    if verbose: print('looking for database at',tangos_path+('void.db' if simname=='void' else 'Halo'+halonum+'.db'))
     
-
     # get the data
-    if simname=='void':
-        tangos.core.init_db(tangos_path+'void.db')
-    else:
-        tangos.core.init_db(tangos_path+'Halo'+halonum+'.db')
-
+    tangos.core.init_db(tangos_path)
     sim = tangos.get_simulation('void_volume' if simname=='void' else simname)
-
+    if verbose: print('found database at',tangos_path)
+    
     return sim
 
 
 
-def get_pynbody_path(simname,machine='astro',physics='edge1'):
+def get_pynbody_path(simname,machine='dirac',physics='edge1'):
 
     """
     physics = 'edge1' or 'edge2'
@@ -176,7 +172,7 @@ def get_pynbody_path(simname,machine='astro',physics='edge1'):
 
 
 
-def load_pynbody_data(simname,output=-1,machine='astro',verbose=True,physics='edge1'):
+def load_pynbody_data(simname,output=-1,machine='dirac',verbose=True,physics='edge1'):
     """
     Returns the particle data for the given simulation and output number.
     By default, returns the z=0 output, which is specified via '-1'.

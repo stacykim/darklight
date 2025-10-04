@@ -9,7 +9,9 @@ from .utils import *
 from ..constants import *
 
 
-def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., fn_vmax=None, figfn=None, plot_separately=False, legend=True, sfh_lim=None, vmax_lim=None, mstar_lim=None):
+def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu, zre=4., force_rmax_in_rvir=False,
+                                 fn_vmax=None, figfn=None, plot_separately=False, legend=True, 
+                                 sfh_lim=None, vmax_lim=None, mstar_lim=None):
     """
     Assumes that the given arrays t,vsmooth,sfh_insitu,mstar (and possibly
     mstar_insitu) are increasing in time.
@@ -20,6 +22,7 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     plot_scatter = False if mstar.ndim==1 else True
 
     if plot_scatter:
+        vsmooth_stats      = np.array([ np.percentile(vsmooth     [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
         sfh_stats          = np.array([ np.percentile(sfh_insitu  [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
         mstar_insitu_stats = np.array([ np.percentile(mstar_insitu[:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
         mstar_stats        = np.array([ np.percentile(mstar       [:,i], [15.9,50,84.1, 2.3,97.7]) for i in range(len(t)) ])
@@ -41,8 +44,12 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     # get halo data
     if fn_vmax==None:
-        t_edge,z_edge,mstar_edge,rbins,menc_dm = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile')
-        vmax_edge = np.array([ np.sqrt(max( G*menc_dm[i]/rbins[i] )) for i in range(len(t_edge))])
+        t_edge,z_edge,mstar_edge,rbins,menc_dm,r200c = halo.calculate_for_progenitors('t()','z()','M200c_stars','rbins_profile','dm_mass_profile','r200c')
+
+        vmax_edge = np.zeros(len(t_edge))
+        for i in range(len(t_edge)):
+            vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
+            vmax_edge[i] = max(vcirc) if not force_rmax_in_rvir else max(vcirc[ rbins[i]<r200c[i] ])
         tre = np.interp(zre,z_edge,t_edge)
     
         tsfh_edge_raw = np.arange(0,t[-1],0.02) # not midpoints, but left of bin
@@ -58,7 +65,11 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
 
     # plot the vmaxes
-    ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
+    if plot_scatter:
+        ax1a.plot(t,vsmooth_stats[:,1],'C0',alpha=0.8,label='DarkLight')
+        ax1a.fill_between(t,vsmooth_stats[:,0],vsmooth_stats[:,2],color='C0',alpha=0.2)
+    else:
+        ax1a.plot(t,vsmooth,'C0',alpha=0.8,label='DarkLight')
     ax1a.plot(t_edge,vmax_edge,color='0.7',label='EDGE')
     ylims = ax1a.get_ylim() if vmax_lim==None else vmax_lim # [4,36]
     ax1a.plot(tre*np.ones(2),ylims,'k--')
@@ -98,17 +109,20 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
     ax1b.set_yscale('log')
     if sfh_lim != None:  ax1b.set_ylim(sfh_lim)  # [1e-6,2e-2]
     ax1b.set_xlim([0,14])
-    ax1b.set_ylabel('SFH (M$_\odot$/yr)')
-    if legend: ax1b.legend(loc='best',frameon=False)
+    ax1b.set_ylabel(r'SFH (M$_\odot$/yr)')
+    if legend: ax1b.legend(loc=4,frameon=False) #'best'
     
     ax2.set_yscale('log')
     if mstar_lim != None:  ax2.set_ylim(mstar_lim)  # [5e2,1e7]
     ax2.set_xlim([0,14])
     ax2.set_xlabel('t (Gyr)') 
-    ax2.set_ylabel('M$_*$ (M$_\odot$)')
+    ax2.set_ylabel(r'M$_*$ (M$_\odot$)')
     if legend: ax2.legend(loc='best',frameon=False)
+
     
     if not plot_separately:
+
+        if figfn==None:  return fig1, (ax1a,ax1b,ax2)
         
         try: fig1.tight_layout()
         except: print('error when tried tight_layout()!')
@@ -119,6 +133,8 @@ def plot_darklight_vs_edge_mstar(halo, t,z,vsmooth,sfh_insitu,mstar,mstar_insitu
 
     else:
 
+        if figfn==None:  return (fig1,fig2), (ax1a,ax1b,ax2)
+        
         plt.figure(1)
         plt.savefig((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')
         print((figfn if figfn != None else 'darklight_vs_edge')+'-vmax_sfh.pdf')
