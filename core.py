@@ -50,8 +50,8 @@ def DarkLight(halo, DMO=True, vmax_file=None, n=1,
 
     vmax_file = string or None.  Alternative method to supply a halo, if tangos Halo
         object is not available.  Can supply a file with name vmax_file that has 
-        three columns: time (Gyr), redshift, vmax (km/s), with each row corresponding
-        to a time step.  Expects time to be in increasing order.
+        four columns: time (Gyr), redshift, vmax (km/s), M200c (Msun), with each row
+         corresponding to a time step.  Expects time to be in increasing order.
 
     DMO = True if running on a DMO simulation.  Will then multiply particle
         masses by sqrt(1-fbary) and an additional suppression to match values in 
@@ -138,24 +138,34 @@ def DarkLight(halo, DMO=True, vmax_file=None, n=1,
     # compute or read in vmax trajectory
     if vmax_file==None:
 
-        t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
+        if 'Vmax' in halo.keys():
+            
+            t, z, m200c = halo.calculate_for_progenitors('t()','z()','M200c')
 
-        if len(t)==0: 
-            return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n)
-
-        vmax = np.zeros(len(t))
-        for i in range(len(t)):
-            vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
-            try: vmax[i] = max(vcirc) if not force_rmax_in_rvir else max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
-            except ValueError as e:
-                print(e)
-                print('halo',halo.halo_number,'at t =',round(t[i],2),'Gyr. skipping!')
+            if len(t)==0: 
                 return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n)
+
+        else:
+            
+            t,z,rbins,menc_dm, m200c, r200c = halo.calculate_for_progenitors('t()','z()','rbins_profile','dm_mass_profile', 'M200c', 'r200c')
+
+            if len(t)==0: 
+                return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n)
+
+            vmax = np.zeros(len(t))
+            for i in range(len(t)):
+                vcirc = np.sqrt( G*menc_dm[i]/rbins[i] )
+                try: vmax[i] = max(vcirc) if not force_rmax_in_rvir else max(vcirc[ rbins[i]<r200c[i] ])  # make sure rmax < r200
+                except ValueError as e:
+                    print(e)
+                    print('halo',halo.halo_number,'at t =',round(t[i],2),'Gyr. skipping!')
+                    return np.array([]), np.array([]), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n), np.array([[]]*n)
+                
         vmax *=  sqrt(1-FBARYON) if DMO else 1
 
     else:
-        t,z,vmax = loadtxt(vmax_file,unpack=True)
-        t,z,vmax = t[::-1],z[::-1],vmax[::-1] # change to backwards time order to match tangos
+        t,z,vmax,m200c = loadtxt(vmax_file,unpack=True)
+        t,z,vmax,m200c = t[::-1],z[::-1],vmax[::-1],m200c[::-1] # change to backwards time order to match tangos
 
     
     ############################################################
@@ -189,11 +199,13 @@ def DarkLight(halo, DMO=True, vmax_file=None, n=1,
     # check if halo is occupied
     if vmax_file == None:
         m = halo['M200c'] if 'M200c' in halo.keys() else 1. # if no mass in tangos, then probably very low mass, give arbitrarily low value
-        pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
-        occupied = np.random.rand(n) < pocc
-    else:  # if just given file of vmaxes, then assume it is occupied
-        occupied = np.ones(n)
+    else:
+        m = m200c[0]
+        
+    pocc = occupation_fraction(vsmooth[-1],m,method=occupation)
+    occupied = np.random.rand(n) < pocc
 
+    
     # compute in-situ component
     sfhs_insitu   = np.zeros((n,len(tt)))
     mstars_insitu = np.zeros((n,len(tt)))
