@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "darklight"
+name = "darklight-galaxies"
 version = "0.1.0"
 description = "Semi-empirical galaxy formation model calibrated on observations and the EDGE dwarf galaxy simulation suite"
 authors = [
