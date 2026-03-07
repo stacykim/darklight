@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "darklight-galaxies"
-version = "0.1.0"
+version = "0.1.0.dev1"
 description = "Semi-empirical galaxy formation model calibrated on observations and the EDGE dwarf galaxy simulation suite"
 authors = [
     {name = "Stacy Kim", email = "skim11@carnegiescience.edu"}
