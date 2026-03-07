@@ -21,3 +21,6 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/stacykim/darklight"
+
+[tool.hatch.build.targets.wheel]
+packages = [ "darklight" ]
